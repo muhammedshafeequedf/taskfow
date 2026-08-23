@@ -39,7 +39,7 @@ export default function PortalApprovalQueue() {
   }, [token]);
 
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-4 md:p-8 animate-fade-in">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Approval Queue</h1>
         <p className="text-sm text-[color:var(--text-muted)] mt-1">
@@ -65,7 +65,23 @@ export default function PortalApprovalQueue() {
               {requests.length} request{requests.length !== 1 ? 's' : ''} pending approval
             </span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="md:hidden divide-y divide-[color:var(--border-subtle)]">
+            {requests.map((req) => {
+              const createdBy = typeof req.createdBy === 'object' ? req.createdBy.name : req.createdBy;
+              return (
+                <button
+                  key={req._id}
+                  type="button"
+                  className="w-full text-left p-4 min-h-11"
+                  onClick={() => navigate(`/portal/requests/${req._id}`)}
+                >
+                  <p className="font-medium">{req.title}</p>
+                  <p className="text-xs text-[color:var(--text-muted)] mt-1">{createdBy} · {req.priority}</p>
+                </button>
+              );
+            })}
+          </div>
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">

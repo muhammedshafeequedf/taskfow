@@ -71,6 +71,7 @@ export async function listPurchaseOrders(
   return PurchaseOrder.find(filter)
     .populate('vendorAccountId', 'name')
     .populate('contractId', 'title')
+    .populate('projectId', 'name key')
     .sort({ createdAt: -1 })
     .lean();
 }
@@ -183,6 +184,7 @@ async function provisionFromPurchaseOrder(
           status: 'in_stock',
           vendorAccountId: po.vendorAccountId,
           purchaseOrderId: po._id,
+          projectId: po.projectId,
           purchaseCost: Number(line.unitPrice ?? 0),
           currency: po.currency,
           purchaseDate: new Date(),

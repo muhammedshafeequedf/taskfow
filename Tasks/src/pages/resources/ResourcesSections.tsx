@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import {
@@ -147,8 +148,21 @@ export function ResourcesAllocations() {
                   <td className="px-4 py-3">
                     <div className="font-medium">{nameOf(r.userId as { name?: string; email?: string })}</div>
                     {r.roleLabel && <div className="text-[11px] text-[color:var(--text-muted)]">{r.roleLabel}</div>}
+                    {typeof r.userId === 'object' && r.userId._id && (
+                      <Link to="/hrms/employees" className="text-[11px] text-[color:var(--accent)] hover:underline">
+                        HR record
+                      </Link>
+                    )}
                   </td>
-                  <td className="px-4 py-3">{nameOf(r.projectId as { name?: string; key?: string })}</td>
+                  <td className="px-4 py-3">
+                    {typeof r.projectId === 'object' && r.projectId._id ? (
+                      <Link to={`/projects/${r.projectId._id}/dashboard`} className="text-[color:var(--accent)] hover:underline">
+                        {nameOf(r.projectId as { name?: string; key?: string })}
+                      </Link>
+                    ) : (
+                      nameOf(r.projectId as { name?: string; key?: string })
+                    )}
+                  </td>
                   <td className="px-4 py-3 tabular-nums">{r.percent}%</td>
                   <td className="px-4 py-3 text-[color:var(--text-muted)]">
                     {fmtDate(r.startDate)} → {fmtDate(r.endDate)}

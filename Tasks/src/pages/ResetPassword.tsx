@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { authApi } from '../lib/api';
+import { authApi, portalApi } from '../lib/api';
 import { APP_NAME } from '../brand';
 import AtriumLogo from '../components/AtriumLogo';
 
@@ -29,13 +29,19 @@ export default function ResetPassword() {
       return;
     }
     setLoading(true);
-    const res = await authApi.resetPassword(token, password);
-    setLoading(false);
-    if (res.success) {
+    const staff = await authApi.resetPassword(token, password);
+    if (staff.success) {
+      setLoading(false);
       navigate('/login?reset=success', { replace: true });
       return;
     }
-    setError((res as { message?: string }).message ?? 'Reset failed. The link may have expired.');
+    const customer = await portalApi.resetPassword(token, password);
+    setLoading(false);
+    if (customer.success) {
+      navigate('/login?reset=success', { replace: true });
+      return;
+    }
+    setError((customer as { message?: string }).message ?? (staff as { message?: string }).message ?? 'Reset failed. The link may have expired.');
   }
 
   if (!token) {
@@ -92,7 +98,7 @@ export default function ResetPassword() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="w-full px-4 py-3 rounded-xl bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/50 focus:border-[color:var(--accent)] transition"
+                className="w-full px-4 py-3 rounded-xl bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-base text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/50 focus:border-[color:var(--accent)] transition"
                 placeholder="••••••••"
               />
             </div>
@@ -108,7 +114,7 @@ export default function ResetPassword() {
                 onChange={(e) => setConfirm(e.target.value)}
                 required
                 minLength={6}
-                className="w-full px-4 py-3 rounded-xl bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/50 focus:border-[color:var(--accent)] transition"
+                className="w-full px-4 py-3 rounded-xl bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-base text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/50 focus:border-[color:var(--accent)] transition"
                 placeholder="••••••••"
               />
             </div>

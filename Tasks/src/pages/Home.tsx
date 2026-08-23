@@ -147,7 +147,7 @@ const MODULE_DETAILS: Record<string, ModuleDetail> = {
     ],
   },
   service: {
-    summary: 'Support tickets, SLA queues, and a knowledge base for customer care.',
+    summary: 'Support tickets and SLA for all channels, including tickets created from customer portal approval.',
     features: [
       'Ticket queues',
       'SLA tracking',
@@ -157,23 +157,13 @@ const MODULE_DETAILS: Record<string, ModuleDetail> = {
     ],
   },
   'portal-admin': {
-    summary: 'Administer customer portal organizations, users, and request approvals.',
+    summary: 'Customer organisations, portal users, project mappings, and request approval. Ticket work happens in Service Desk.',
     features: [
       'Customer organizations',
       'Portal users & roles',
       'Project mappings',
       'Approval queue',
       'Request oversight',
-    ],
-  },
-  mail: {
-    summary: 'Shared mailboxes and compose flows linked to your CRM work.',
-    features: [
-      'Shared inboxes',
-      'Compose & send',
-      'CRM-linked threads',
-      'Mailbox permissions',
-      'Message history',
     ],
   },
   calendar: {
@@ -338,7 +328,7 @@ function buildTiles(
     tiles.push({
       id: 'service',
       title: 'Service Desk',
-      description: 'Tickets, SLA, knowledge base',
+      description: 'Tickets, SLA, and portal-originated work',
       to: '/service/tickets',
       icon: <IssuesIcon className="h-[18px] w-[18px]" />,
       keywords: 'service desk tickets sla support',
@@ -348,20 +338,10 @@ function buildTiles(
     tiles.push({
       id: 'portal-admin',
       title: 'Customer Portal',
-      description: 'Customer orgs and approvals',
+      description: 'Customer orgs, mappings, and approvals',
       to: '/admin/customer-orgs',
       icon: <UsersIcon className="h-[18px] w-[18px]" />,
       keywords: 'portal customer orgs',
-    });
-  }
-  if (canAccessModule(user, 'mail', enabledModules)) {
-    tiles.push({
-      id: 'mail',
-      title: 'Mail',
-      description: 'Shared inboxes and compose',
-      to: '/mail',
-      icon: <InboxIcon className="h-[18px] w-[18px]" />,
-      keywords: 'mail email inbox compose',
     });
   }
   if (canAccessModule(user, 'calendar', enabledModules)) {

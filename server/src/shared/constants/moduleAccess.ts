@@ -13,7 +13,6 @@ export type ModuleId =
   | 'procurement'
   | 'service'
   | 'portal-admin'
-  | 'mail'
   | 'calendar'
   | 'documents'
   | 'inbox'
@@ -34,7 +33,6 @@ export const TOGGLEABLE_MODULES = [
   'procurement',
   'service',
   'portal-admin',
-  'mail',
   'calendar',
   'documents',
 ] as const satisfies readonly ModuleId[];
@@ -96,6 +94,7 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.crm.contact.list',
     'taskflow.crm.quote.list',
     'taskflow.crm.activity.list',
+    'taskflow.crm.campaign.list',
     'taskflow.crm.contract.list',
     'taskflow.crm.settings.manage',
   ],
@@ -163,7 +162,6 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'customers:manage',
     'customers:view',
   ],
-  mail: ['taskflow.mail.mailbox.read', 'taskflow.mail.message.read', 'taskflow.mail.mailbox.send'],
   calendar: [
     'taskflow.calendar.dashboard.read',
     'taskflow.calendar.meeting.list',
@@ -222,7 +220,6 @@ export const MODULE_PERMISSION_PREFIXES: Record<ModuleId, readonly string[]> = {
   procurement: ['taskflow.procurement.'],
   service: ['taskflow.service.'],
   'portal-admin': ['taskflow.customer_portal.', 'customers:', 'customer-requests:'],
-  mail: ['taskflow.mail.'],
   calendar: ['taskflow.calendar.'],
   documents: ['taskflow.documents.'],
   inbox: ['inbox.', 'inbox:'],

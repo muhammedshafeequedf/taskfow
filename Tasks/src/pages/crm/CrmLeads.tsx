@@ -1,61 +1,89 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
-import { crmApi, type CrmLead } from '../../lib/api';
+import { money } from '../../components/moduleKit';
+import { formatDateDDMMYYYY } from '../../lib/dateFormat';
+import { crmApi, type CrmLead, type CrmLeadStats } from '../../lib/api';
+import {
+  LEAD_SERVICES,
+  LEAD_SOURCES,
+  LEAD_STATUSES,
+  OPEN_LEAD_STATUSES,
+  assigneeName,
+  leadLabel,
+  scoreClass,
+  statusClass,
+} from './leadCatalog';
 
-const SOURCES = ['web', 'referral', 'cold', 'partner', 'event', 'other'];
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const selectClass =
+  'h-8 rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-2.5 text-[13px]';
+const inputClass =
+  'h-8 w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-2.5 text-[13px]';
 
 export default function CrmLeads() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
   const canCreate = canAny(user, 'taskflow.crm.lead.create');
   const canUpdate = canAny(user, 'taskflow.crm.lead.update');
+
+  const [draft, setDraft] = useState({ search: '', status: '', source: '', serviceInterest: '', mine: false });
+  const [applied, setApplied] = useState(draft);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [leads, setLeads] = useState<CrmLead[]>([]);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [modal, setModal] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [stats, setStats] = useState<CrmLeadStats | null>(null);
+  const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
-  const [form, setForm] = useState({
-    title: '',
-    source: 'web',
-    contactName: '',
-    contactEmail: '',
-    contactPhone: '',
-    companyName: '',
-    notes: '',
-  });
 
   const load = () => {
     if (!token) return;
-    crmApi.listLeads(token, statusFilter || undefined).then((res) => {
-      if (res.success && res.data) setLeads(res.data as CrmLead[]);
-    });
+    setLoading(true);
+    crmApi
+      .listLeads(token, {
+        search: applied.search.trim() || undefined,
+        status: applied.status || undefined,
+        source: applied.source || undefined,
+        serviceInterest: applied.serviceInterest || undefined,
+        mine: applied.mine || undefined,
+        page,
+        limit,
+      })
+      .then((res) => {
+        setLoading(false);
+        if (res.success && res.data) {
+          setLeads(res.data.data ?? []);
+          setTotal(res.data.total ?? 0);
+          setTotalPages(res.data.totalPages ?? 1);
+        }
+      });
   };
 
   useEffect(() => {
     load();
-  }, [token, statusFilter]);
+  }, [token, applied, page, limit]);
 
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    if (!token || !form.title.trim()) return;
-    const res = await crmApi.createLead(
-      {
-        title: form.title.trim(),
-        source: form.source,
-        contactName: form.contactName.trim() || undefined,
-        contactEmail: form.contactEmail.trim() || undefined,
-        contactPhone: form.contactPhone.trim() || undefined,
-        companyName: form.companyName.trim() || undefined,
-        notes: form.notes.trim() || undefined,
-      },
-      token
-    );
-    if (res.success) {
-      setModal(false);
-      setForm({ title: '', source: 'web', contactName: '', contactEmail: '', contactPhone: '', companyName: '', notes: '' });
-      load();
-    }
+  useEffect(() => {
+    if (!token) return;
+    crmApi.getLeadStats(token).then((res) => {
+      if (res.success && res.data) setStats(res.data);
+    });
+  }, [token, applied, msg]);
+
+  function search(e?: React.FormEvent) {
+    e?.preventDefault();
+    setPage(1);
+    setApplied({ ...draft });
+  }
+
+  function clearFilters() {
+    const empty = { search: '', status: '', source: '', serviceInterest: '', mine: false };
+    setDraft(empty);
+    setApplied(empty);
+    setPage(1);
   }
 
   async function convert(id: string) {
@@ -63,121 +91,215 @@ export default function CrmLeads() {
     setMsg('');
     const res = await crmApi.convertLead(id, undefined, token);
     if (!res.success) {
-      setMsg((res as { message?: string }).message ?? 'Convert failed');
+      setMsg((res as { message?: string }).message ?? 'Convert failed — open the lead to convert with pipeline/value.');
       return;
     }
-    const data = res.data as { deal?: { _id: string }; account?: { _id: string } };
-    setMsg('Lead converted');
+    const data = res.data as { account?: { _id: string } };
     load();
     if (data?.account?._id) navigate(`/crm/accounts/${data.account._id}`);
     else navigate('/crm/deals');
   }
 
-  async function markLost(id: string) {
-    if (!token || !canUpdate) return;
-    await crmApi.updateLead(id, { status: 'lost' }, token);
-    load();
-  }
+  const kpis = [
+    { label: 'Open', value: stats?.open ?? 0 },
+    { label: 'New', value: stats?.statusCounts?.new ?? 0 },
+    { label: 'Discovery', value: stats?.statusCounts?.discovery ?? 0 },
+    { label: 'Qualified', value: stats?.statusCounts?.qualified ?? 0 },
+    { label: 'Overdue follow-ups', value: stats?.overdueFollowUps ?? 0 },
+    { label: 'Converted this month', value: stats?.convertedThisMonth ?? 0 },
+    { label: 'Win-in rate', value: `${stats?.conversionRate ?? 0}%` },
+  ];
 
   return (
     <div className="p-8 w-full px-4 sm:px-6 lg:px-8 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Leads</h1>
-          <p className="text-[13px] text-[color:var(--text-muted)]">Capture and convert inbound opportunities.</p>
+          <p className="text-[13px] text-[color:var(--text-muted)]">
+            Capture inbound IT opportunities, score fit, and convert to deals.
+          </p>
         </div>
-        <div className="flex gap-2">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm"
-          >
-            <option value="">All statuses</option>
-            <option value="new">new</option>
-            <option value="qualified">qualified</option>
-            <option value="converted">converted</option>
-            <option value="lost">lost</option>
-          </select>
-          {canCreate && (
-            <button type="button" onClick={() => setModal(true)} className="btn-primary px-4 py-2 rounded-lg text-sm">
-              Add lead
-            </button>
-          )}
-        </div>
-      </div>
-      {msg && <p className="text-sm text-[color:var(--accent)]">{msg}</p>}
-      <div className="space-y-2">
-        {leads.map((l) => (
-          <div key={l._id} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-4 flex flex-wrap justify-between items-center gap-3">
-            <div>
-              <p className="font-medium">{l.title}</p>
-              <p className="text-sm text-[color:var(--text-muted)]">
-                {l.source} · {l.status}
-                {l.companyName && ` · ${l.companyName}`}
-                {l.contactName && ` · ${l.contactName}`}
-                {l.contactEmail && ` · ${l.contactEmail}`}
-              </p>
-            </div>
-            {l.status !== 'converted' && l.status !== 'lost' && canUpdate && (
-              <div className="flex gap-2">
-                <button type="button" onClick={() => void convert(l._id)} className="text-sm text-[color:var(--accent)] hover:underline">
-                  Convert
-                </button>
-                <button type="button" onClick={() => void markLost(l._id)} className="text-sm text-[color:var(--text-muted)] hover:underline">
-                  Mark lost
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-        {leads.length === 0 && <p className="text-sm text-[color:var(--text-muted)]">No leads yet.</p>}
+        {canCreate && (
+          <Link to="/crm/leads/new" className="btn-primary px-4 py-2 rounded-lg text-sm">
+            Add lead
+          </Link>
+        )}
       </div>
 
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setModal(false)}>
-          <form onSubmit={create} className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl max-w-md w-full p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold">New lead</h2>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Title</span>
-              <input required value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" placeholder="Opportunity title" />
-            </label>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Source</span>
-              <select value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
-                {SOURCES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Company</span>
-              <input value={form.companyName} onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Contact name</span>
-                <input value={form.contactName} onChange={(e) => setForm((f) => ({ ...f, contactName: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Contact email</span>
-                <input value={form.contactEmail} onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
-            </div>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Phone</span>
-              <input value={form.contactPhone} onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-            </label>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Notes</span>
-              <textarea rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-            </label>
-            <div className="flex gap-2 pt-2">
-              <button type="submit" className="btn-primary px-4 py-2 rounded-lg text-sm">Create</button>
-              <button type="button" onClick={() => setModal(false)} className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm">Cancel</button>
-            </div>
-          </form>
+      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-7">
+        {kpis.map((k) => (
+          <div key={k.label} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2">
+            <p className="text-[11px] text-[color:var(--text-muted)]">{k.label}</p>
+            <p className="text-lg font-semibold">{k.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {msg && <p className="text-sm text-[color:var(--accent)]">{msg}</p>}
+
+      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
+        <form onSubmit={search} className="flex flex-wrap items-end gap-2 p-3 border-b border-[color:var(--border-subtle)]">
+          <label className="min-w-[12rem] flex-1 text-[11px] text-[color:var(--text-muted)]">
+            Search
+            <input
+              className={`${inputClass} mt-1`}
+              value={draft.search}
+              onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))}
+              placeholder="Title, company, email…"
+            />
+          </label>
+          <label className="text-[11px] text-[color:var(--text-muted)]">
+            Status
+            <select className={`${selectClass} mt-1 block`} value={draft.status} onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))}>
+              <option value="">All</option>
+              {LEAD_STATUSES.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[11px] text-[color:var(--text-muted)]">
+            Source
+            <select className={`${selectClass} mt-1 block`} value={draft.source} onChange={(e) => setDraft((d) => ({ ...d, source: e.target.value }))}>
+              <option value="">All</option>
+              {LEAD_SOURCES.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[11px] text-[color:var(--text-muted)]">
+            Service
+            <select className={`${selectClass} mt-1 block`} value={draft.serviceInterest} onChange={(e) => setDraft((d) => ({ ...d, serviceInterest: e.target.value }))}>
+              <option value="">All</option>
+              {LEAD_SERVICES.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-2 h-8 text-[13px]">
+            <input type="checkbox" checked={draft.mine} onChange={(e) => setDraft((d) => ({ ...d, mine: e.target.checked }))} />
+            My leads
+          </label>
+          <button type="submit" className="btn-primary h-8 px-3 rounded-md text-[12px]">Search</button>
+          <button type="button" onClick={clearFilters} className="h-8 px-3 rounded-md text-[12px] border border-[color:var(--border-subtle)]">
+            Clear
+          </button>
+          <select
+            className={selectClass}
+            value={limit}
+            onChange={(e) => {
+              setLimit(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n} / page</option>
+            ))}
+          </select>
+        </form>
+
+        <div className="overflow-auto">
+          <table className="w-full text-[13px]">
+            <thead className="text-left text-[11px] text-[color:var(--text-muted)] bg-[color:var(--bg-page)]/40">
+              <tr>
+                <th className="px-3 py-2 font-medium">Lead</th>
+                <th className="px-3 py-2 font-medium">Company</th>
+                <th className="px-3 py-2 font-medium">Source</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Score</th>
+                <th className="px-3 py-2 font-medium">Budget</th>
+                <th className="px-3 py-2 font-medium">Owner</th>
+                <th className="px-3 py-2 font-medium">Follow-up</th>
+                <th className="px-3 py-2 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-[color:var(--text-muted)]">Loading…</td>
+                </tr>
+              )}
+              {!loading &&
+                leads.map((l) => {
+                  const open = OPEN_LEAD_STATUSES.includes(l.status);
+                  const overdue = open && l.nextFollowUpAt && new Date(l.nextFollowUpAt).getTime() < Date.now();
+                  return (
+                    <tr key={l._id} className="border-t border-[color:var(--border-subtle)]/70 hover:bg-[color:var(--bg-page)]/40">
+                      <td className="px-3 py-2">
+                        <Link to={`/crm/leads/${l._id}`} className="font-medium hover:underline">
+                          {l.title}
+                        </Link>
+                        <p className="text-[11px] text-[color:var(--text-muted)]">
+                          {l.contactName || l.contactEmail || 'No contact'}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2">{l.companyName || '—'}</td>
+                      <td className="px-3 py-2">{leadLabel(LEAD_SOURCES, l.source)}</td>
+                      <td className="px-3 py-2">
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full border ${statusClass(l.status)}`}>
+                          {leadLabel(LEAD_STATUSES, l.status)}
+                        </span>
+                      </td>
+                      <td className={`px-3 py-2 font-semibold ${scoreClass(l.score)}`}>{l.score ?? '—'}</td>
+                      <td className="px-3 py-2">
+                        {l.estimatedBudget != null ? money(l.estimatedBudget, l.currency || 'USD') : '—'}
+                      </td>
+                      <td className="px-3 py-2">{assigneeName(l.assigneeId)}</td>
+                      <td className={`px-3 py-2 ${overdue ? 'text-red-400' : ''}`}>
+                        {l.nextFollowUpAt ? formatDateDDMMYYYY(l.nextFollowUpAt) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <Link to={`/crm/leads/${l._id}`} className="text-[color:var(--accent)] hover:underline">
+                          View
+                        </Link>
+                        {canUpdate && open && (
+                          <>
+                            <span className="text-[color:var(--text-muted)]"> · </span>
+                            <button type="button" onClick={() => void convert(l._id)} className="text-[color:var(--accent)] hover:underline">
+                              Convert
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              {!loading && leads.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-[12px] text-[color:var(--text-muted)]">
+                    {applied.search || applied.status || applied.source || applied.serviceInterest || applied.mine
+                      ? 'No leads match these filters.'
+                      : 'No leads yet. Add an inbound opportunity to get started.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t border-[color:var(--border-subtle)]">
+          <p className="text-[11px] text-[color:var(--text-muted)]">
+            {total} lead{total === 1 ? '' : 's'} · Page {page} / {totalPages}
+          </p>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="h-7 px-2.5 rounded-md text-[12px] border border-[color:var(--border-subtle)] disabled:opacity-40"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              className="h-7 px-2.5 rounded-md text-[12px] border border-[color:var(--border-subtle)] disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

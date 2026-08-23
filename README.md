@@ -43,7 +43,7 @@ Atrium is a multi-tenant business platform: one login, one workspace, many modul
 - **Multi-tenant** — organizations (workspaces) with company branding and base currency.
 - **Permission-first** — hub tiles and APIs respect both module enablement and user permissions.
 - **Delivery-ready PM** — issues, sprints, boards, QA, timesheets, and reports in one place.
-- **CRM through close** — deals, quotations (PDF + email), and contracts.
+- **CRM through close** — leads, a shared Contacts directory, deals, quotations (PDF + email), and contracts. Customer companies live in **Customer Portal** orgs, not a separate CRM Accounts list.
 - **Fast local setup** — MongoDB + two `npm run dev` processes.
 
 ---
@@ -56,7 +56,7 @@ Atrium is a multi-tenant business platform: one login, one workspace, many modul
 | `auth` | **Auth** | Users, roles, permission assignment *(always on)* |
 | `inbox` | **Inbox** | In-app notifications |
 | `pm` | **Project Manager** | Projects, issues, boards, sprints, QA, reports, timesheets |
-| `crm` | **CRM** | Leads, accounts, contacts, deals, quotes, activities, CRM contracts |
+| `crm` | **CRM** | Leads, contacts, deals, quotes, campaigns, follow-ups, activities, CRM contracts |
 | `contracts` | **Contracts** | Contract lifecycle |
 | `billing` | **Billing** | Tax rules, subscriptions, invoices |
 | `accounts` | **Accounts** | Finance / accounts workflows |
@@ -65,7 +65,6 @@ Atrium is a multi-tenant business platform: one login, one workspace, many modul
 | `assets` | **Assets** | Asset registry |
 | `procurement` | **Procurement** | Vendors, purchase orders |
 | `service` | **Service Desk** | Tickets & SLA |
-| `mail` | **Mail** | Mailbox sync / CRM mail |
 | `calendar` | **Calendar** | Events |
 | `documents` | **Documents** | Document records |
 | `portal-admin` | **Portal admin** | Customer organization administration |
@@ -110,22 +109,29 @@ Always-on: **Core**, **Auth**. Other modules are toggleable; disabled modules hi
 
 ### CRM
 
-- Leads, accounts, contacts, deals (pipelines), activities
-- **Quotations**: full-page create/edit, line items (hourly / fixed / milestone), tax, discounts
+- **Leads** — capture, score, extra people on the record, “already a customer” picker for a **Customer Portal org**
+- **Convert** — create a deal (and optionally a project). If the lead is not already a portal customer, an editable **create customer** form (same fields as portal admin) provisions the org and admin user. Convert does **not** create a CRM Account
+- **Contacts** — one people directory (not a second list on deals/quotes). Portal org users, lead people, HRMS employees, and project members upsert into the same contact (match on workspace + email). List page uses Core Currencies-style filters (name, email, phone, customer org, origin, title), Search / Clear, pagination
+- **Customer company** — **Customer Portal org** (`/admin/customer-orgs`). CRM nav has no Accounts. Deals, quotes, and CRM contracts attach to `customerOrgId`
+- **Deals** — pipelines, Kanban (including drag between stages)
+- **Quotations** — full-page create/edit, line items (hourly / fixed / milestone), tax, discounts; inherit customer from the deal
 - Searchable currency picker (Core catalog); defaults to company base currency
 - Quote list: filters (title, deal, status, customer) with Search / Clear, paginated table
 - Quote detail: PDF download, email send (optional PDF attachment), accept / reject
-- Contracts from accepted commercial flow
+- Campaigns, follow-ups, activities; contracts from the accepted commercial flow
+
+Finance **Accounts** (the `accounts` module) is still the ledger/workflow module — it is not CRM customer companies.
 
 ### Billing & ops modules
 
 - Billing tax rules power quote tax defaults
-- HRMS, assets, procurement, service desk, mail, calendar, documents — module shells gated by enablement + permissions
+- HRMS, assets, procurement, service desk, calendar, documents — module shells gated by enablement + permissions
 
 ### Customer portal
 
-- Separate customer auth and request lifecycle
-- Portal admin manages customer orgs (when `portal-admin` is enabled)
+- External customer login, requests, and tickets
+- **Portal admin** (`portal-admin`) is the place to manage customer organisations, team, and roles
+- Creating or inviting a portal user also upserts that person into CRM Contacts (`origin: portal`)
 
 ---
 
@@ -201,21 +207,15 @@ VITE_WS_URL=http://localhost:5000
 ```bash
 cd ../server
 npm run create-super-admin
-npm run seed-taskflow-roles
-npm run seed-currencies
+npm run seed
 ```
 
 | Script | Purpose |
 |--------|---------|
 | `create-super-admin` | First platform admin (prompts, or use `SUPER_ADMIN_*` env vars) |
-| `seed-taskflow-roles` | System roles + permission catalogs |
-| `seed-currencies` | Global currency list for Core |
+| `seed` | Countries, currencies, country–currency mapping, TaskFlow roles, customer-org roles |
 
-Optional:
-
-```bash
-npm run seed-org-customer-roles   # customer portal roles
-```
+`seed-taskflow-roles`, `seed-currencies`, and `seed-org-customer-roles` are aliases for `npm run seed`.
 
 ### 5. Run
 
@@ -276,8 +276,6 @@ Copy from [`server/.env.example`](server/.env.example). Important groups:
 
 If none are enabled, outbound mail is skipped. Priority when several are on: **SMTP → Azure Graph → SendGrid → ByteMail**.
 
-Poste.io-style IMAP/SMTP for CRM mail: `POSTE_IMAP_*`, `POSTE_SMTP_*`, `MAIL_SYNC_INTERVAL_MS`.
-
 #### Auth providers
 
 - Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`
@@ -320,9 +318,10 @@ Telegram, Teams, Slack, Discord, WhatsApp, S3, Azure Blob, SMS (Twilio / Fast2SM
 | `npm test` | Jest |
 | `npm run test:coverage` | Coverage report |
 | `npm run create-super-admin` | Create platform admin |
-| `npm run seed-taskflow-roles` | Seed roles / permissions |
-| `npm run seed-currencies` | Seed currency catalog |
-| `npm run seed-org-customer-roles` | Seed customer-portal roles |
+| `npm run seed` | Seed countries, currencies, mapping, TaskFlow roles, customer-org roles |
+| `npm run seed-taskflow-roles` | Alias for `seed` |
+| `npm run seed-currencies` | Alias for `seed` |
+| `npm run seed-org-customer-roles` | Alias for `seed` |
 | `npm run accept-invitations` | Invitation helper |
 | `npm run migrate-permissions-to-dot` | Legacy permission migration |
 | `npm run import-ado` | Import Azure DevOps work items |
@@ -358,11 +357,11 @@ taskflow/                         # repository root
 │       ├── middleware/           # auth, permissions, requireModuleEnabled
 │       ├── modules/
 │       │   ├── core/
-│       │   ├── crm/              # quotes, deals, accounts, …
+│       │   ├── crm/              # leads, contacts, deals, quotes, campaigns, …
 │       │   ├── auth|users|roles|organizations/
 │       │   ├── projects|issues|boards|sprints|…
 │       │   ├── billing|hrms|assets|procurement|…
-│       │   ├── mail|calendar|documents|resources|service-desk/
+│       │   ├── calendar|documents|resources|service-desk/
 │       │   └── customer-portal/
 │       ├── routes/               # mounts modules under /api
 │       ├── scripts/              # seed & CLI
@@ -402,9 +401,9 @@ Examples (non-exhaustive):
 | Users / roles | `/api/users`, `/api/roles` |
 | Core | `/api/core/company`, `/api/core/currencies`, `/api/core/modules`, … |
 | PM | `/api/projects`, `/api/issues`, `/api/boards`, `/api/sprints`, … |
-| CRM | `/api/crm/...` (quotes, deals, accounts, …) |
+| CRM | `/api/crm/...` (leads, contacts, deals, quotes, campaigns, customer-orgs list, …) |
 | Billing | `/api/billing/...` |
-| Customer portal | `/api/customer/...` |
+| Customer portal | `/api/customer/...`, `/api/admin/customer-orgs` |
 
 Module-gated routes return errors when the module is disabled for the platform.
 

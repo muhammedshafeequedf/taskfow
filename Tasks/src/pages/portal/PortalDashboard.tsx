@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { portalApi, type CustomerRequest } from '../../lib/api';
+import { portalApi, type CustomerRequest, type LinkedServiceTicket } from '../../lib/api';
 import { FiInbox, FiClock, FiCheckCircle, FiXCircle, FiFileText, FiArrowRight } from 'react-icons/fi';
 
 function statusColor(status: string): string {
@@ -58,32 +58,33 @@ function MetricCard({ label, value, icon, color }: MetricCardProps) {
 export default function PortalDashboard() {
   const { token } = useAuth();
   const [requests, setRequests] = useState<CustomerRequest[]>([]);
+  const [tickets, setTickets] = useState<LinkedServiceTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    portalApi.listRequests(token).then((res) => {
+    Promise.all([portalApi.listRequests(token), portalApi.listTickets(token)]).then(([reqRes, tRes]) => {
       setLoading(false);
-      if (res.success && res.data) {
-        setRequests(res.data.requests || []);
-      } else {
-        setError((res as { message?: string }).message ?? 'Failed to load requests');
-      }
+      if (reqRes.success && reqRes.data) setRequests(reqRes.data.requests || []);
+      else setError((reqRes as { message?: string }).message ?? 'Failed to load issues');
+      if (tRes.success && tRes.data) setTickets(tRes.data.tickets || []);
     });
   }, [token]);
 
-  const total = requests.length;
   const pending = requests.filter((r) =>
     ['submitted', 'pending_customer_approval', 'pending_taskflow_approval'].includes(r.status)
   ).length;
-  const ticketCreated = requests.filter((r) => r.status === 'ticket_created' || r.status === 'in_progress').length;
+  const ticketCreated = requests.filter((r) =>
+    ['ticket_created', 'in_progress', 'approved'].includes(r.status)
+  ).length;
   const closed = requests.filter((r) => ['resolved', 'closed'].includes(r.status)).length;
+  const openTickets = tickets.filter((t) => !['resolved', 'closed'].includes(t.status)).length;
   const recent = [...requests].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
 
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-4 md:p-8 animate-fade-in">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Dashboard</h1>
         <p className="text-sm text-[color:var(--text-muted)] mt-1">Overview of your customer portal activity</p>
@@ -98,17 +99,17 @@ export default function PortalDashboard() {
       ) : (
         <>
           {/* Metric cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <MetricCard label="Total Requests" value={total} icon={<FiInbox />} color="bg-[color:var(--accent)]/15 text-[color:var(--accent)]" />
-            <MetricCard label="Pending Approval" value={pending} icon={<FiClock />} color="bg-yellow-500/15 text-yellow-400" />
-            <MetricCard label="Tickets Created" value={ticketCreated} icon={<FiFileText />} color="bg-blue-500/15 text-blue-400" />
-            <MetricCard label="Closed / Resolved" value={closed} icon={<FiCheckCircle />} color="bg-green-500/15 text-green-400" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+            <MetricCard label="Open issues" value={ticketCreated} icon={<FiFileText />} color="bg-blue-500/15 text-blue-400" />
+            <MetricCard label="Pending approval" value={pending} icon={<FiClock />} color="bg-yellow-500/15 text-yellow-400" />
+            <MetricCard label="Open tickets" value={openTickets} icon={<FiInbox />} color="bg-[color:var(--accent)]/15 text-[color:var(--accent)]" />
+            <MetricCard label="Closed" value={closed} icon={<FiCheckCircle />} color="bg-green-500/15 text-green-400" />
           </div>
 
           {/* Recent requests */}
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-[color:var(--border-subtle)]">
-              <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Recent Requests</h2>
+              <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Recent issues</h2>
               <Link
                 to="/portal/requests"
                 className="flex items-center gap-1 text-xs text-[color:var(--accent)] hover:underline font-medium"
@@ -118,9 +119,9 @@ export default function PortalDashboard() {
             </div>
             {recent.length === 0 ? (
               <div className="px-5 py-10 text-center text-sm text-[color:var(--text-muted)]">
-                No requests yet.{' '}
+                No issues yet.{' '}
                 <Link to="/portal/requests/new" className="text-[color:var(--accent)] hover:underline">
-                  Submit your first request
+                  Submit your first issue
                 </Link>
               </div>
             ) : (
@@ -154,12 +155,12 @@ export default function PortalDashboard() {
           </div>
 
           {/* Quick links */}
-          {total === 0 && (
+          {requests.length === 0 && (
             <div className="mt-6 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-8 text-center">
               <FiXCircle className="mx-auto text-4xl text-[color:var(--text-muted)] mb-3" />
-              <p className="text-sm text-[color:var(--text-muted)] mb-4">You haven't submitted any requests yet.</p>
+              <p className="text-sm text-[color:var(--text-muted)] mb-4">You haven't submitted any issues yet.</p>
               <Link to="/portal/requests/new" className="btn-primary">
-                Submit a Request
+                New issue
               </Link>
             </div>
           )}

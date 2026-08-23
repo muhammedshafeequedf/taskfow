@@ -83,6 +83,8 @@ export async function create(
     description: input.description ?? '',
     lead: leadUserId,
     taskflowOrganizationId,
+    orgId: input.orgId || undefined,
+    crmAccountId: input.crmAccountId || undefined,
     statuses,
     issueTypes,
     priorities,

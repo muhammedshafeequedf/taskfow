@@ -1,8 +1,25 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import jwt from 'jsonwebtoken';
 import { authMiddleware } from '../../middleware/auth.middleware';
+import { customerAuthMiddleware } from '../customer-portal/middleware/customerAuth.middleware';
+
+function staffOrCustomerAuth(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  if (!token) {
+    void authMiddleware(req, res, next);
+    return;
+  }
+  const decoded = jwt.decode(token) as { userType?: string } | null;
+  if (decoded?.userType === 'customer') {
+    void customerAuthMiddleware(req, res, next);
+    return;
+  }
+  void authMiddleware(req, res, next);
+}
 
 const router = Router();
 
@@ -24,7 +41,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
 
-router.use(authMiddleware);
+router.use(staffOrCustomerAuth);
 
 router.post('/', upload.single('file'), (req: Request, res: Response) => {
   if (!req.file) {

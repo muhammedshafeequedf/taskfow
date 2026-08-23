@@ -630,7 +630,7 @@ export default function CoreCurrencies() {
                     {rows.length === 0 ? (
                       <>
                         No currencies. Run{' '}
-                        <code className="text-[11px] bg-[color:var(--bg-page)] px-1 rounded">npm run seed-currencies</code>
+                        <code className="text-[11px] bg-[color:var(--bg-page)] px-1 rounded">npm run seed</code>
                       </>
                     ) : (
                       'Try adjusting filters or click Clear.'

@@ -4,6 +4,7 @@ import { SlaPolicy } from './models/slaPolicy.model';
 import { CustomerRequest } from '../customer-portal/customer-request/customerRequest.model';
 import { CrmAccount } from '../crm/models/crmAccount.model';
 import { CrmContract } from '../crm/models/crmContract.model';
+import { Issue } from '../issues/issue.model';
 import { ApiError } from '../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { notifyUser } from '../notifications/notificationDispatch.service';
@@ -29,6 +30,8 @@ export async function listTickets(
   if (opts.queue) filter.queue = opts.queue;
   return ServiceTicket.find(filter)
     .populate('assigneeId', 'name email')
+    .populate('accountId', 'name')
+    .populate('projectId', 'name key')
     .sort({ updatedAt: -1 })
     .lean();
 }
@@ -99,19 +102,52 @@ export async function createTicket(
 
 export async function updateTicket(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
-  const update = { ...input };
-  if (input.status === 'resolved' || input.status === 'closed') {
-    update.resolvedAt = new Date();
+  const existing = await ServiceTicket.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
+  if (!existing) throw new ApiError(404, 'Ticket not found');
+
+  const allowed = ['status', 'priority', 'queue', 'assigneeId', 'description', 'subject'] as const;
+  const $set: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (!(key in input)) continue;
+    if (key === 'assigneeId' && (input.assigneeId === '' || input.assigneeId == null)) {
+      $set.assigneeId = undefined;
+      continue;
+    }
+    $set[key] = input[key];
   }
-  if (input.status === 'in_progress' && !input.firstRespondedAt) {
-    update.firstRespondedAt = new Date();
+
+  if ($set.status === 'resolved' || $set.status === 'closed') {
+    $set.resolvedAt = new Date();
   }
+  if ($set.status === 'in_progress' && !existing.firstRespondedAt) {
+    $set.firstRespondedAt = new Date();
+  }
+
+  const prevAssignee = existing.assigneeId ? String(existing.assigneeId) : '';
+  const clearAssignee = 'assigneeId' in input && (input.assigneeId === '' || input.assigneeId == null);
+  if (clearAssignee) delete $set.assigneeId;
+  const nextAssignee = clearAssignee ? '' : $set.assigneeId !== undefined ? String($set.assigneeId) : prevAssignee;
+
   const updated = await ServiceTicket.findOneAndUpdate(
     { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
-    { $set: update },
+    {
+      ...(Object.keys($set).length ? { $set } : {}),
+      ...(clearAssignee ? { $unset: { assigneeId: 1 } } : {}),
+    },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Ticket not found');
+
+  if (nextAssignee && nextAssignee !== prevAssignee && mongoose.Types.ObjectId.isValid(nextAssignee)) {
+    await notifyUser({
+      userId: nextAssignee,
+      eventKey: 'task_assigned',
+      title: 'Ticket assigned',
+      body: existing.subject,
+      link: `/service/tickets?ticket=${id}`,
+    }).catch(() => undefined);
+  }
+
   return updated;
 }
 
@@ -121,6 +157,8 @@ export async function getTicket(id: string, workspaceId: string | null | undefin
     .populate('assigneeId', 'name email')
     .populate('accountId', 'name')
     .populate('contractId', 'title')
+    .populate('linkedIssueId', 'key title')
+    .populate('projectId', 'name key')
     .lean();
   if (!ticket) throw new ApiError(404, 'Ticket not found');
   return ticket;
@@ -170,10 +208,21 @@ export async function submitCsat(
   return updated;
 }
 
+const REQUEST_TO_SD_PRIORITY: Record<string, string> = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  critical: 'urgent',
+};
+
 export async function createTicketFromCustomerRequest(
   requestId: string,
   workspaceId: string,
-  userId: string
+  userId: string,
+  extras?: {
+    linkedIssueId?: mongoose.Types.ObjectId | string;
+    workClassification?: 'billable_change' | 'fix';
+  }
 ) {
   const request = await CustomerRequest.findById(requestId).lean();
   if (!request) throw new ApiError(404, 'Request not found');
@@ -184,20 +233,47 @@ export async function createTicketFromCustomerRequest(
     const account = await CrmAccount.findOne({ customerOrgId }).lean();
     if (account) accountId = account._id as mongoose.Types.ObjectId;
   }
-  const existing = await ServiceTicket.findOne({ customerRequestId: requestId }).lean();
-  if (existing) return existing;
+  const linkedIssueId =
+    extras?.linkedIssueId ?? (request as { linkedIssueId?: mongoose.Types.ObjectId }).linkedIssueId;
+  const workClassification =
+    extras?.workClassification ??
+    (request as { workClassification?: 'billable_change' | 'fix' }).workClassification;
+  const existing = await ServiceTicket.findOne({ customerRequestId: requestId });
+  if (existing) {
+    if (linkedIssueId && !existing.linkedIssueId) existing.linkedIssueId = linkedIssueId as mongoose.Types.ObjectId;
+    if (workClassification && !existing.workClassification) existing.workClassification = workClassification;
+    if (accountId && !existing.accountId) existing.accountId = accountId;
+    if (customerOrgId && !existing.customerOrgId) existing.customerOrgId = customerOrgId;
+    const projectId = (request as { projectId?: mongoose.Types.ObjectId }).projectId;
+    if (projectId && !existing.projectId) existing.projectId = projectId;
+    await existing.save();
+    return existing.toObject();
+  }
+  const reqPriority = (request as { priority?: string }).priority ?? 'medium';
+  const projectId = (request as { projectId?: mongoose.Types.ObjectId }).projectId;
   const doc = await ServiceTicket.create({
     taskflowOrganizationId: orgOid,
     subject: (request as { title: string }).title,
     description: (request as { description?: string }).description,
     accountId,
+    customerOrgId,
+    projectId,
     customerRequestId: new mongoose.Types.ObjectId(requestId),
-    linkedIssueId: (request as { linkedIssueId?: mongoose.Types.ObjectId }).linkedIssueId,
+    linkedIssueId,
+    workClassification,
     status: 'open',
-    priority: 'medium',
+    priority: REQUEST_TO_SD_PRIORITY[reqPriority] ?? 'medium',
     queue: 'portal',
     createdBy: userId,
   });
+  if (linkedIssueId) {
+    await Issue.findByIdAndUpdate(linkedIssueId, {
+      $set: {
+        linkedServiceTicketId: doc._id,
+        customerRequestId: requestId,
+      },
+    });
+  }
   return doc.toObject();
 }
 

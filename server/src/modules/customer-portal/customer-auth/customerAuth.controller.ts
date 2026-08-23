@@ -41,7 +41,7 @@ async function forgotPasswordHandler(req: Request, res: Response): Promise<void>
     await CustomerUser.findByIdAndUpdate(user._id, {
       $set: { passwordResetToken: token, passwordResetExpires: expires },
     });
-    const resetLink = `${env.appUrl}/portal/reset-password?token=${encodeURIComponent(token)}`;
+    const resetLink = `${env.appUrl}/reset-password?token=${encodeURIComponent(token)}`;
     sendCustomerEmail(
       user.email,
       'Reset your Customer Portal password',

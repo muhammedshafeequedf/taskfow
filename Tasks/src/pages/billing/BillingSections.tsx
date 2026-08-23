@@ -476,7 +476,25 @@ export function BillingInvoices() {
             {rows.map((inv) => (
               <tr key={inv._id} className="border-t border-[color:var(--border-subtle)]">
                 <td className="px-4 py-3 font-medium">{inv.number}</td>
-                <td className="px-4 py-3 text-[color:var(--text-muted)]">{accountLabel(inv.accountId)}</td>
+                <td className="px-4 py-3 text-[color:var(--text-muted)]">
+                  {typeof inv.accountId === 'object' && inv.accountId._id ? (
+                    <Link to={`/crm/accounts/${inv.accountId._id}`} className="text-[color:var(--accent)] hover:underline">
+                      {accountLabel(inv.accountId)}
+                    </Link>
+                  ) : (
+                    accountLabel(inv.accountId)
+                  )}
+                  {inv.projectId && (
+                    <p className="text-[11px]">
+                      <Link to={`/projects/${inv.projectId}/dashboard`} className="text-[color:var(--accent)] hover:underline">
+                        Project
+                      </Link>
+                    </p>
+                  )}
+                  {inv.postedToAccounts && (
+                    <p className="text-[11px] text-emerald-500">Posted to accounts</p>
+                  )}
+                </td>
                 <td className="px-4 py-3">{new Date(inv.issueDate).toLocaleDateString()}</td>
                 <td className="px-4 py-3 text-[color:var(--text-muted)]">
                   {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '—'}

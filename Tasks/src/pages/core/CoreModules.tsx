@@ -49,10 +49,6 @@ const MODULE_META: Record<ToggleableModuleId, { title: string; description: stri
     title: 'Customer Portal (admin)',
     description: 'Customer orgs, portal users, and request approvals.',
   },
-  mail: {
-    title: 'Mail',
-    description: 'Shared inboxes, compose, and CRM-linked email.',
-  },
   calendar: {
     title: 'Calendar',
     description: 'Meetings, standups, demos, and reviews.',

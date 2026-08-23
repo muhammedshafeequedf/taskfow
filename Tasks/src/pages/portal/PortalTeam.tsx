@@ -127,7 +127,7 @@ export default function PortalTeam() {
     'w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-4 py-3 text-sm text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] transition focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/30';
 
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-4 md:p-8 animate-fade-in">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
         <div>
           <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Team</h1>
@@ -148,7 +148,16 @@ export default function PortalTeam() {
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-400">{error}</div>
       ) : (
         <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="md:hidden divide-y divide-[color:var(--border-subtle)]">
+            {members.map((m) => (
+              <div key={m._id} className="p-4">
+                <p className="font-medium">{m.name}</p>
+                <p className="text-xs text-[color:var(--text-muted)] mt-1">{m.email}</p>
+                <p className="text-xs mt-1">{getRoleName(m)} · {m.status}</p>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">

@@ -33,9 +33,11 @@ export interface IIssue extends Document {
   customFieldValues: Record<string, unknown>;
   fixVersion?: string[];     // project version ids targeted for fix
   affectsVersions?: string[]; // project version ids this issue affects
-  parent?: mongoose.Types.ObjectId; // parent issue (Epic/Story only)
-  milestone?: mongoose.Types.ObjectId; // milestone
-  backlogOrder?: number; // lower = higher in backlog (sprint=null only)
+  parent?: mongoose.Types.ObjectId;
+  milestone?: mongoose.Types.ObjectId;
+  linkedServiceTicketId?: mongoose.Types.ObjectId;
+  customerRequestId?: mongoose.Types.ObjectId;
+  backlogOrder?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,6 +75,8 @@ const issueSchema = new Schema<IIssue>(
     affectsVersions: { type: [String], default: undefined },
     parent: { type: Schema.Types.ObjectId, ref: 'Issue' },
     milestone: { type: Schema.Types.ObjectId, ref: 'Milestone' },
+    linkedServiceTicketId: { type: Schema.Types.ObjectId, ref: 'ServiceTicket' },
+    customerRequestId: { type: Schema.Types.ObjectId, ref: 'CustomerRequest' },
     backlogOrder: { type: Number },
   },
   { timestamps: true }

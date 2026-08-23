@@ -11,6 +11,7 @@ import { formatMinutes } from '../components/issue/WorkLogInput';
 import { formatDateDDMMYYYY } from '../lib/dateFormat';
 import { userHasPermission } from '../utils/permissions';
 import { PROJECT_PERMISSIONS } from '@shared/constants/permissions';
+import { RelatedRecords } from '../components/RelatedRecords';
 
 const DEFAULT_STATUSES = ['Backlog', 'Todo', 'In Progress', 'Done'];
 const STATUS_COLORS: string[] = ['#4f46e5', '#06b6d4', '#22c55e', '#f97316', '#e11d48', '#8b5cf6'];
@@ -288,6 +289,21 @@ export default function ProjectDashboard() {
         <p className="text-[13px] text-[color:var(--text-muted)] mb-6">
           Overview and quick links for this project.
         </p>
+        {project && (project.crmAccountId || project.orgId) && (
+          <RelatedRecords
+            items={[
+              ...(project.crmAccountId
+                ? [{ label: 'CRM account', text: 'Open account', to: `/crm/accounts/${project.crmAccountId}` }]
+                : []),
+              ...(project.orgId
+                ? [{ label: 'Customer portal', text: 'Organisation', to: `/admin/customer-orgs/${project.orgId}` }]
+                : []),
+              { label: 'Billing', text: 'Invoices', to: '/billing/invoices' },
+              { label: 'Service Desk', text: 'Tickets', to: '/service/tickets' },
+              { label: 'Resources', text: 'Allocations', to: '/resources/allocations' },
+            ]}
+          />
+        )}
 
         <div className="mb-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)]">
           <SectionCard

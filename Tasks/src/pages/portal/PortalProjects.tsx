@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { portalApi, type ProjectMapping } from '../../lib/api';
 import { FiFolder } from 'react-icons/fi';
@@ -36,7 +37,7 @@ export default function PortalProjects() {
   }, [token]);
 
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-4 md:p-8 animate-fade-in">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Projects</h1>
         <p className="text-sm text-[color:var(--text-muted)] mt-1">Projects mapped to your organisation</p>
@@ -76,7 +77,7 @@ export default function PortalProjects() {
               </div>
 
               <div>
-                <p className="text-xs font-medium text-[color:var(--text-muted)] mb-1.5">Allowed Request Types</p>
+                <p className="text-xs font-medium text-[color:var(--text-muted)] mb-1.5">Allowed issue types</p>
                 {m.allowedRequestTypes.length === 0 ? (
                   <span className="text-xs text-[color:var(--text-muted)]">All types allowed</span>
                 ) : (
@@ -92,6 +93,14 @@ export default function PortalProjects() {
                   </div>
                 )}
               </div>
+              {m.status === 'active' && (
+                <Link
+                  to={`/portal/requests/new?projectId=${m.projectId._id}`}
+                  className="btn-primary text-center min-h-11 flex items-center justify-center text-sm"
+                >
+                  New issue
+                </Link>
+              )}
             </div>
           ))}
         </div>

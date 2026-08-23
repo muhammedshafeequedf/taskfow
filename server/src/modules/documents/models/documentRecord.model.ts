@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export type DocumentKind = 'proposal' | 'sow' | 'policy' | 'template';
 export type DocumentStatus = 'draft' | 'in_review' | 'sent' | 'signed' | 'approved' | 'archived';
-export type DocumentEntityType = 'account' | 'deal' | 'contract' | 'project' | 'none';
+export type DocumentEntityType = 'account' | 'deal' | 'contract' | 'project' | 'lead' | 'none';
 
 export interface IDocumentRecord extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
@@ -35,7 +35,7 @@ const documentRecordSchema = new Schema<IDocumentRecord>(
     kind: { type: String, enum: ['proposal', 'sow', 'policy', 'template'], default: 'proposal', index: true },
     status: { type: String, enum: ['draft', 'in_review', 'sent', 'signed', 'approved', 'archived'], default: 'draft', index: true },
     version: { type: Number, default: 1 },
-    entityType: { type: String, enum: ['account', 'deal', 'contract', 'project', 'none'], default: 'none' },
+    entityType: { type: String, enum: ['account', 'deal', 'contract', 'project', 'lead', 'none'], default: 'none' },
     entityId: { type: Schema.Types.ObjectId },
     accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount' },
     ownerId: { type: Schema.Types.ObjectId, ref: 'User' },

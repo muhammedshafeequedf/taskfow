@@ -11,7 +11,9 @@ export interface ICrmDealLineItem {
 
 export interface ICrmDeal extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
-  accountId: mongoose.Types.ObjectId;
+  accountId?: mongoose.Types.ObjectId;
+  customerOrgId?: mongoose.Types.ObjectId;
+  contactId?: mongoose.Types.ObjectId;
   pipelineId: mongoose.Types.ObjectId;
   stageId: mongoose.Types.ObjectId;
   title: string;
@@ -44,7 +46,9 @@ const lineItemSchema = new Schema(
 const crmDealSchema = new Schema<ICrmDeal>(
   {
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
-    accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', required: true, index: true },
+    accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', index: true },
+    customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
+    contactId: { type: Schema.Types.ObjectId, ref: 'CrmContact' },
     pipelineId: { type: Schema.Types.ObjectId, ref: 'CrmPipeline', required: true },
     stageId: { type: Schema.Types.ObjectId, ref: 'CrmStage', required: true },
     title: { type: String, required: true, trim: true },

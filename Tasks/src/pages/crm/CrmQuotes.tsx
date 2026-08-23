@@ -77,10 +77,14 @@ function accountName(
   accountsById: Map<string, CrmAccount>,
   dealsById: Map<string, CrmDeal>
 ): string {
+  if (q.customerOrgId && typeof q.customerOrgId === 'object' && q.customerOrgId.name) return q.customerOrgId.name;
   if (q.accountId && typeof q.accountId === 'object' && q.accountId.name) return q.accountId.name;
   const aid = accountIdOf(q);
   if (aid && accountsById.has(aid)) return accountsById.get(aid)!.name;
   const deal = dealsById.get(dealIdOf(q));
+  if (deal?.customerOrgId && typeof deal.customerOrgId === 'object' && deal.customerOrgId.name) {
+    return deal.customerOrgId.name;
+  }
   if (deal?.accountId) {
     if (typeof deal.accountId === 'object' && deal.accountId.name) return deal.accountId.name;
     if (typeof deal.accountId === 'string' && accountsById.has(deal.accountId)) {

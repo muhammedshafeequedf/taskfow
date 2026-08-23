@@ -16,6 +16,7 @@ export interface IAsset extends Document {
   accountId?: mongoose.Types.ObjectId;
   vendorAccountId?: mongoose.Types.ObjectId;
   purchaseOrderId?: mongoose.Types.ObjectId;
+  projectId?: mongoose.Types.ObjectId;
   location?: string;
   purchaseDate?: Date;
   purchaseCost?: number;
@@ -45,6 +46,7 @@ const assetSchema = new Schema<IAsset>(
     accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount' },
     vendorAccountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount' },
     purchaseOrderId: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder' },
+    projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     location: { type: String },
     purchaseDate: { type: Date },
     purchaseCost: { type: Number, default: 0 },

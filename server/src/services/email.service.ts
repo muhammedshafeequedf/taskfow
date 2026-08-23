@@ -619,25 +619,73 @@ export interface CustomerTicketCreatedEmailParams {
   projectLabel: string;
   typeLabel: string;
   priorityLabel: string;
+  workClassificationLabel?: string;
+  ticketPending?: boolean;
 }
 
 export function renderTicketCreatedEmail(p: CustomerTicketCreatedEmailParams): string {
   const detailUrl = `${p.appUrl}/portal/requests/${p.requestId}`;
+  const pendingNote = p.ticketPending
+    ? '<p style="margin:0 0 16px; color:#b45309; font-size:14px;">A project issue was created. The Service Desk ticket is still pending and will appear shortly.</p>'
+    : '<p style="margin:0 0 16px; color:#475569; font-size:14px;">Atrium approved this issue and created a <strong>Service Desk ticket</strong> plus a project issue. You can track both from the portal.</p>';
   const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.recipientName)},</p>
 <p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#16a34a;">Your work is officially on the board</p>
-<p style="margin:0 0 16px; color:#475569; font-size:14px;">Atrium approved your request and created a <strong>ticket</strong> in the project. The team can track, estimate, and discuss it with the same tools they use for all internal work.</p>
+${pendingNote}
 ${crDetailTable([
-  { label: 'Ticket', value: p.issueKey },
-  { label: 'From request', value: p.requestTitle },
+  { label: 'Issue', value: p.issueKey },
+  { label: 'From', value: p.requestTitle },
   { label: 'Project', value: p.projectLabel },
   { label: 'Type / Priority', value: `${p.typeLabel} · ${p.priorityLabel}` },
+  ...(p.workClassificationLabel
+    ? [{ label: 'Classification', value: p.workClassificationLabel }]
+    : []),
   { label: 'Organisation', value: p.orgName },
 ])}
 ${crNextStepsBox('What you can do', [
-  'Watch this request in the portal for status updates and comments from the team.',
-  'You can add portal comments; mention @issue if a comment should sync to the ticket for engineers.',
+  'Open this issue in the portal to see the linked project issue and Service Desk ticket.',
+  'Comment on the public ticket thread or on the issue; mention @issue to reach engineers.',
 ])}
-${crCtaBlock(detailUrl, 'View request in portal')}`;
+${crCtaBlock(detailUrl, 'View issue in portal')}`;
+  return crBodyWrap(inner, 'green');
+}
+
+export interface StaffTicketCreatedEmailParams {
+  recipientName: string;
+  requestTitle: string;
+  issueKey: string;
+  orgName: string;
+  appUrl: string;
+  projectId: string;
+  issueId: string;
+  ticketId?: string;
+  projectLabel: string;
+  typeLabel: string;
+  priorityLabel: string;
+  workClassificationLabel?: string;
+  ticketPending?: boolean;
+}
+
+export function renderStaffTicketCreatedEmail(p: StaffTicketCreatedEmailParams): string {
+  const issueUrl = `${p.appUrl}/projects/${p.projectId}/issues/${p.issueId}`;
+  const ticketUrl = p.ticketId ? `${p.appUrl}/service/tickets?ticket=${p.ticketId}` : `${p.appUrl}/service/tickets`;
+  const pendingNote = p.ticketPending
+    ? '<p style="margin:0 0 16px; color:#b45309; font-size:14px;">The Service Desk ticket is still pending. The project issue is ready.</p>'
+    : '';
+  const inner = `<p style="font-size:15px; margin:0 0 8px; color:#334155;">Hi ${escapeHtml(p.recipientName)},</p>
+<p style="font-size:16px; font-weight:600; margin:0 0 12px; color:#16a34a;">Customer issue approved — ticket and project issue created</p>
+${pendingNote}
+${crDetailTable([
+  { label: 'Issue', value: p.issueKey },
+  { label: 'Title', value: p.requestTitle },
+  { label: 'Project', value: p.projectLabel },
+  { label: 'Type / Priority', value: `${p.typeLabel} · ${p.priorityLabel}` },
+  ...(p.workClassificationLabel
+    ? [{ label: 'Classification', value: p.workClassificationLabel }]
+    : []),
+  { label: 'Organisation', value: p.orgName },
+])}
+<p style="margin:16px 0 8px;"><a href="${escapeHtml(ticketUrl)}" style="color:#4f46e5;font-weight:600;">Open Service Desk ticket</a></p>
+<p style="margin:0 0 16px;"><a href="${escapeHtml(issueUrl)}" style="color:#4f46e5;font-weight:600;">Open project issue</a></p>`;
   return crBodyWrap(inner, 'green');
 }
 
@@ -702,7 +750,7 @@ export function renderCustomerOrgAdminInviteEmail(
   <p>Your customer portal account has been created as the Organization Admin for <strong>${escapeHtml(orgName)}</strong>. Use the credentials below to sign in:</p>
   <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Temporary Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>
   <p>Please change your password after your first login.</p>
-  <p><a href="${escapeHtml(appUrl)}/portal/login" style="color: #4f46e5;">Sign in to Customer Portal</a></p>
+  <p><a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Sign in to Customer Portal</a></p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>
@@ -727,7 +775,7 @@ export function renderCustomerMemberInviteEmail(
   <p>You've been invited to join the <strong>${escapeHtml(orgName)}</strong> customer portal. Use the credentials below to sign in:</p>
   <p><strong>Email:</strong> ${escapeHtml(email)}<br><strong>Temporary Password:</strong> <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${escapeHtml(password)}</code></p>
   <p>Please change your password after your first login.</p>
-  <p><a href="${escapeHtml(appUrl)}/portal/login" style="color: #4f46e5;">Sign in to Customer Portal</a></p>
+  <p><a href="${escapeHtml(appUrl)}/login" style="color: #4f46e5;">Sign in to Customer Portal</a></p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
   <p style="font-size: 12px; color: #64748b;">This is an automated message. Do not reply.</p>
 </body>

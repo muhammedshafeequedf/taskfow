@@ -17,6 +17,24 @@ import { renderProjectInviteEmail } from '../../services/email.service';
 import { env } from '../../config/env';
 import { notifyUser } from '../notifications/notificationDispatch.service';
 import { shouldSend } from '../notifications/notificationPreference.service';
+import { upsertContactByEmail } from '../crm/contacts/contacts.service';
+
+async function upsertStaffFromProjectMember(projectId: unknown, userId: unknown) {
+  try {
+    const project = await Project.findById(projectId).select('taskflowOrganizationId').lean();
+    const user = await User.findById(userId).select('name email').lean();
+    const ws = project?.taskflowOrganizationId ? String(project.taskflowOrganizationId) : '';
+    if (!ws || !user?.email) return;
+    await upsertContactByEmail(ws, {
+      email: user.email,
+      name: user.name,
+      origin: 'staff',
+      userId: String(user._id),
+    });
+  } catch {
+    /* best-effort */
+  }
+}
 
 const PROJECT_MEMBER_ROLE_NAME = 'Project Member';
 const PROJECT_LEAD_ROLE_NAME = 'Project Lead';
@@ -122,6 +140,7 @@ export async function ensureUserHasFullProjectAccess(projectId: string, userId: 
     designationId: leadDesignation?._id,
     permissions: leadDesignation?.permissions || FULL_PROJECT_PERMS_DOT,
   });
+  await upsertStaffFromProjectMember(projectObjectId, userObjectId);
 }
 
 export async function inviteToProject(
@@ -298,6 +317,7 @@ export async function acceptInvitation(invitationId: string, userId: string): Pr
     role: invitation.role,
     permissions: permSnapshot,
   });
+  await upsertStaffFromProjectMember(projectId, userId);
   await ProjectInvitation.findByIdAndUpdate(invitationId, { $set: { status: 'accepted' } });
 
   await InboxMessage.findOneAndUpdate(
@@ -388,4 +408,5 @@ export async function ensureUserIsDefaultProjectMember(projectId: string, userId
     designationId: defaultDesignation?._id,
     permissions: memberPerms,
   });
+  await upsertStaffFromProjectMember(projectObjectId, userObjectId);
 }

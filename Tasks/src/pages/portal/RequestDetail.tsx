@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   portalApi,
@@ -179,6 +179,8 @@ export default function RequestDetail() {
   const [commentBody, setCommentBody] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState('');
+  const [sdComment, setSdComment] = useState('');
+  const [sdSending, setSdSending] = useState(false);
 
   function loadRequest() {
     if (!token || !id) return;
@@ -404,14 +406,14 @@ export default function RequestDetail() {
   const assigneeHistory = buildAssigneeHistory();
 
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-4 md:p-8 animate-fade-in">
       {/* Back button */}
       <button
         type="button"
         onClick={() => navigate('/portal/requests')}
         className="flex items-center gap-2 text-sm text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition mb-6"
       >
-        <FiArrowLeft /> Back to Requests
+        <FiArrowLeft /> Back to Issues
       </button>
 
       {loading ? (
@@ -434,14 +436,20 @@ export default function RequestDetail() {
                   {request.priority}
                 </span>
                 <span className="text-xs text-[color:var(--text-muted)] capitalize">{request.type}</span>
+                {request.workClassification === 'billable_change' && (
+                  <span className="text-xs rounded-full px-2 py-0.5 bg-[color:var(--accent)]/15 text-[color:var(--accent)]">Billable change</span>
+                )}
+                {request.workClassification === 'fix' && (
+                  <span className="text-xs rounded-full px-2 py-0.5 bg-green-500/15 text-green-400">Fix</span>
+                )}
               </div>
             </div>
           </div>
 
           {/* Main grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             {/* ── Left column ── */}
-            <div className="lg:col-span-2 space-y-4">
+            <div className="space-y-4">
               {/* Request Details */}
               <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
                 <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-4">Request Details</h2>
@@ -483,12 +491,42 @@ export default function RequestDetail() {
                 </p>
               </div>
 
+              {(request.attachments?.length ?? 0) > 0 && (
+                <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
+                  <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-3">Attachments</h2>
+                  <ul className="space-y-3">
+                    {request.attachments.map((url) => {
+                      const name = decodeURIComponent(url.split('/').pop() ?? url);
+                      const isImage = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url);
+                      return (
+                        <li key={url}>
+                          {isImage ? (
+                            <a href={url} target="_blank" rel="noreferrer" className="block">
+                              <img src={url} alt={name} className="max-h-48 rounded-lg border border-[color:var(--border-subtle)] object-contain" />
+                            </a>
+                          ) : (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-[color:var(--accent)] hover:underline break-all"
+                            >
+                              {name}
+                            </a>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
               {/* ── Ticket Details (when ticket is created) ── */}
               {hasTicket && linkedIssue && (
                 <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
                   <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-4 flex items-center gap-2">
                     <FiList className="text-[color:var(--accent)]" />
-                    Ticket Info — {request.linkedIssueKey}
+                    Linked project issue — {request.linkedIssueKey}
                   </h2>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                     <div>
@@ -523,6 +561,68 @@ export default function RequestDetail() {
                       </p>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {request.linkedTicket && (
+                <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
+                  <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-4">
+                    Service Desk ticket
+                  </h2>
+                  <p className="text-xs text-[color:var(--text-muted)] mb-3">
+                    Status is updated by Atrium. You can follow the public thread below.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <span className="text-xs rounded-full px-2 py-0.5 bg-blue-500/15 text-blue-400 capitalize">
+                      {request.linkedTicket.status.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-xs rounded-full px-2 py-0.5 bg-[color:var(--bg-elevated)] capitalize">
+                      {request.linkedTicket.priority}
+                    </span>
+                    {request.linkedTicket.workClassification === 'billable_change' && (
+                      <span className="text-xs rounded-full px-2 py-0.5 bg-[color:var(--accent)]/15 text-[color:var(--accent)]">Billable change</span>
+                    )}
+                    {request.linkedTicket.workClassification === 'fix' && (
+                      <span className="text-xs rounded-full px-2 py-0.5 bg-green-500/15 text-green-400">Fix</span>
+                    )}
+                    <Link to={`/portal/tickets/${request.linkedTicket._id}`} className="text-xs text-[color:var(--accent)]">
+                      Open ticket
+                    </Link>
+                  </div>
+                  <p className="font-medium text-sm mb-3">{request.linkedTicket.subject}</p>
+                  <div className="space-y-2">
+                    {(request.linkedTicket.comments ?? []).map((c, i) => (
+                      <div key={i} className="rounded-lg border border-[color:var(--border-subtle)] p-3">
+                        <p className="text-xs font-medium">{c.authorName ?? 'User'}</p>
+                        <p className="text-sm mt-1 whitespace-pre-wrap">{c.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <form
+                    className="mt-3"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!token || !sdComment.trim() || !request.linkedTicket) return;
+                      setSdSending(true);
+                      const res = await portalApi.addTicketComment(request.linkedTicket._id, sdComment.trim(), token);
+                      setSdSending(false);
+                      if (res.success) {
+                        setSdComment('');
+                        loadRequest();
+                      }
+                    }}
+                  >
+                    <textarea
+                      value={sdComment}
+                      onChange={(e) => setSdComment(e.target.value)}
+                      rows={2}
+                      className={`${inputClass} text-base`}
+                      placeholder="Public comment for the support team…"
+                    />
+                    <button type="submit" disabled={sdSending || !sdComment.trim()} className="btn-primary mt-2 min-h-11 text-sm">
+                      {sdSending ? 'Sending…' : 'Comment on ticket'}
+                    </button>
+                  </form>
                 </div>
               )}
 

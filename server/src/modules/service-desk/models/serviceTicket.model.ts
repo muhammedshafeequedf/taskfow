@@ -16,6 +16,8 @@ export interface IServiceTicket extends Document {
   accountId?: mongoose.Types.ObjectId;
   contactId?: mongoose.Types.ObjectId;
   contractId?: mongoose.Types.ObjectId;
+  projectId?: mongoose.Types.ObjectId;
+  customerOrgId?: mongoose.Types.ObjectId;
   subject: string;
   description?: string;
   status: ServiceTicketStatus;
@@ -29,6 +31,7 @@ export interface IServiceTicket extends Document {
   resolvedAt?: Date;
   customerRequestId?: mongoose.Types.ObjectId;
   linkedIssueId?: mongoose.Types.ObjectId;
+  workClassification?: 'billable_change' | 'fix';
   csatScore?: number;
   csatComment?: string;
   comments: IServiceTicketComment[];
@@ -54,6 +57,8 @@ const serviceTicketSchema = new Schema<IServiceTicket>(
     accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', index: true },
     contactId: { type: Schema.Types.ObjectId, ref: 'CrmContact' },
     contractId: { type: Schema.Types.ObjectId, ref: 'CrmContract' },
+    projectId: { type: Schema.Types.ObjectId, ref: 'Project', index: true },
+    customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
     subject: { type: String, required: true, trim: true },
     description: { type: String },
     status: { type: String, enum: ['open', 'pending', 'in_progress', 'resolved', 'closed'], default: 'open' },
@@ -67,6 +72,7 @@ const serviceTicketSchema = new Schema<IServiceTicket>(
     resolvedAt: { type: Date },
     customerRequestId: { type: Schema.Types.ObjectId, ref: 'CustomerRequest' },
     linkedIssueId: { type: Schema.Types.ObjectId, ref: 'Issue' },
+    workClassification: { type: String, enum: ['billable_change', 'fix'] },
     csatScore: { type: Number, min: 1, max: 5 },
     csatComment: { type: String },
     comments: { type: [ticketCommentSchema], default: [] },

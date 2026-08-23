@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminCustomerApi, type CustomerRequest } from '../../lib/api';
 import {
@@ -88,6 +89,7 @@ interface PanelProps {
 function RequestDetailPanel({ request, onClose, onDone, token }: PanelProps) {
   const isPendingTf = request.status === 'pending_taskflow_approval';
 
+  const [workClassification, setWorkClassification] = useState<'billable_change' | 'fix' | ''>('');
   const [approveNote, setApproveNote] = useState('');
   const [approving, setApproving]     = useState(false);
   const [approveError, setApproveError] = useState('');
@@ -103,7 +105,12 @@ function RequestDetailPanel({ request, onClose, onDone, token }: PanelProps) {
   async function handleApprove() {
     setApproving(true);
     setApproveError('');
-    const res = await adminCustomerApi.approveRequest(request._id, approveNote || undefined, token);
+    const res = await adminCustomerApi.approveRequest(
+      request._id,
+      approveNote || undefined,
+      token,
+      workClassification as 'billable_change' | 'fix'
+    );
     setApproving(false);
     if (res.success) onDone();
     else setApproveError((res as { message?: string }).message ?? 'Approve failed');
@@ -165,8 +172,21 @@ function RequestDetailPanel({ request, onClose, onDone, token }: PanelProps) {
           </div>
           {request.linkedIssueKey && (
             <div className="col-span-2">
-              <dt className="text-[color:var(--text-muted)]">Linked Ticket</dt>
+              <dt className="text-[color:var(--text-muted)]">Project issue</dt>
               <dd className="text-[color:var(--accent)] font-medium mt-0.5">{request.linkedIssueKey}</dd>
+            </div>
+          )}
+          {request.linkedServiceTicketId && (
+            <div className="col-span-2">
+              <dt className="text-[color:var(--text-muted)]">Service Desk</dt>
+              <dd className="mt-0.5">
+                <Link
+                  to={`/service/tickets?ticket=${request.linkedServiceTicketId}`}
+                  className="text-sm font-medium text-[color:var(--accent)] hover:underline"
+                >
+                  Open in Service Desk
+                </Link>
+              </dd>
             </div>
           )}
         </dl>
@@ -183,10 +203,35 @@ function RequestDetailPanel({ request, onClose, onDone, token }: PanelProps) {
         {isPendingTf ? (
           <>
             <div className="border border-[color:var(--border-subtle)] rounded-xl p-4 mb-4">
-              <p className="text-sm font-semibold text-[color:var(--text-primary)] mb-3">Approve Request</p>
+              <p className="text-sm font-semibold text-[color:var(--text-primary)] mb-2">Approve</p>
+              <p className="text-xs text-[color:var(--text-muted)] mb-3">
+                Approving creates a Service Desk ticket and a project issue.
+              </p>
               {approveError && (
                 <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{approveError}</div>
               )}
+              <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                <label className={`flex-1 min-h-11 px-3 py-2 rounded-lg border text-sm cursor-pointer ${workClassification === 'billable_change' ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/10' : 'border-[color:var(--border-subtle)]'}`}>
+                  <input
+                    type="radio"
+                    name="workClassification"
+                    className="sr-only"
+                    checked={workClassification === 'billable_change'}
+                    onChange={() => setWorkClassification('billable_change')}
+                  />
+                  Billable change
+                </label>
+                <label className={`flex-1 min-h-11 px-3 py-2 rounded-lg border text-sm cursor-pointer ${workClassification === 'fix' ? 'border-[color:var(--accent)] bg-[color:var(--accent)]/10' : 'border-[color:var(--border-subtle)]'}`}>
+                  <input
+                    type="radio"
+                    name="workClassification"
+                    className="sr-only"
+                    checked={workClassification === 'fix'}
+                    onChange={() => setWorkClassification('fix')}
+                  />
+                  Fix
+                </label>
+              </div>
               <textarea
                 rows={2}
                 value={approveNote}
@@ -197,10 +242,10 @@ function RequestDetailPanel({ request, onClose, onDone, token }: PanelProps) {
               <button
                 type="button"
                 onClick={handleApprove}
-                disabled={approving || rejecting}
+                disabled={approving || rejecting || !workClassification}
                 className="btn-primary text-sm flex items-center gap-2"
               >
-                <FiCheckCircle /> {approving ? 'Approving…' : 'Approve & Create Ticket'}
+                <FiCheckCircle /> {approving ? 'Approving…' : 'Approve'}
               </button>
             </div>
 

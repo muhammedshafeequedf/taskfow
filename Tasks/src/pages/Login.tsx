@@ -205,7 +205,7 @@ export default function Login() {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
-                          className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] py-3 pl-11 pr-4 text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] transition focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/45"
+                          className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] py-3 pl-11 pr-4 text-base text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] transition focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/45"
                           placeholder="you@example.com"
                         />
                       </div>
@@ -224,7 +224,7 @@ export default function Login() {
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           required
-                          className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] py-3 pl-11 pr-4 text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] transition focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/45"
+                          className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] py-3 pl-11 pr-4 text-base text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] transition focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/45"
                           placeholder="••••••••"
                         />
                       </div>
@@ -284,6 +284,9 @@ export default function Login() {
                   </Link>
                 </p>
               )}
+              <p className="mt-3 text-center text-xs text-[color:var(--text-muted)]">
+                Customer portal users sign in here and are taken to their portal automatically.
+              </p>
               {publicConfig.signupEnabled && publicConfig.emailPasswordEnabled && (
                 <p className="mt-2 text-center text-sm text-[color:var(--text-muted)]">
                   Don&apos;t have an account?{' '}

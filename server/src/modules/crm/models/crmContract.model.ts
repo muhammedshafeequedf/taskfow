@@ -6,7 +6,8 @@ export type CrmContractStatus = 'draft' | 'active' | 'expired' | 'cancelled';
 
 export interface ICrmContract extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
-  accountId: mongoose.Types.ObjectId;
+  accountId?: mongoose.Types.ObjectId;
+  customerOrgId?: mongoose.Types.ObjectId;
   dealId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
   title: string;
@@ -20,6 +21,7 @@ export interface ICrmContract extends Document {
   autoRenew: boolean;
   hoursIncluded?: number;
   hoursUsed?: number;
+  hourlyRate?: number;
   status: CrmContractStatus;
   slaPolicyId?: mongoose.Types.ObjectId;
   notes?: string;
@@ -30,7 +32,8 @@ export interface ICrmContract extends Document {
 const crmContractSchema = new Schema<ICrmContract>(
   {
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
-    accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', required: true, index: true },
+    accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', index: true },
+    customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
     dealId: { type: Schema.Types.ObjectId, ref: 'CrmDeal' },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     title: { type: String, required: true },
@@ -44,6 +47,7 @@ const crmContractSchema = new Schema<ICrmContract>(
     autoRenew: { type: Boolean, default: false },
     hoursIncluded: { type: Number },
     hoursUsed: { type: Number, default: 0 },
+    hourlyRate: { type: Number },
     status: { type: String, enum: ['draft', 'active', 'expired', 'cancelled'], default: 'draft', index: true },
     slaPolicyId: { type: Schema.Types.ObjectId, ref: 'SlaPolicy' },
     notes: { type: String },

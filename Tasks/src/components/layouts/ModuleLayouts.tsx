@@ -7,7 +7,6 @@ import {
   buildPmNav,
   buildAuthNav,
   buildCrmNav,
-  buildMailNav,
   buildServiceNav,
   buildPortalAdminNav,
   buildInboxNav,
@@ -81,10 +80,6 @@ export function AuthModuleLayout() {
 
 export function CrmModuleLayout() {
   return <ModuleLayout moduleTitle="CRM" moduleId="crm" navBuilder={buildCrmNav} />;
-}
-
-export function MailModuleLayout() {
-  return <ModuleLayout moduleTitle="Mail" moduleId="mail" navBuilder={buildMailNav} />;
 }
 
 export function ServiceModuleLayout() {

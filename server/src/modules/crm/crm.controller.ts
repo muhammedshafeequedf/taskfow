@@ -10,6 +10,7 @@ import * as pipelinesService from './pipelines/pipelines.service';
 import * as quotesService from './quotes/quotes.service';
 import * as contractsService from './contracts/contracts.service';
 import * as dashboardService from './dashboard/dashboard.service';
+import * as campaignsService from './campaigns/campaigns.service';
 import * as ecosystemService from './ecosystem/ecosystem.service';
 
 function ws(req: Request & { user?: AuthPayload; activeOrganizationId?: string }) {
@@ -82,8 +83,14 @@ export async function linkProject(req: Request & { user?: AuthPayload }, res: Re
 
 export async function listContacts(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { accountId?: string; search?: string };
+  const q = req.query as { accountId?: string; customerOrgId?: string; search?: string; origin?: string };
   const data = await contactsService.listContacts(ws(req), q);
+  res.json({ success: true, data });
+}
+
+export async function listCustomerOrgs(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await contactsService.listCustomerOrgs(ws(req));
   res.json({ success: true, data });
 }
 
@@ -104,8 +111,25 @@ export async function deleteContact(req: Request & { user?: AuthPayload }, res: 
 
 export async function listActivities(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { relatedType?: string; relatedId?: string };
-  const data = await activitiesService.listActivities(ws(req), q);
+  const q = req.query as {
+    relatedType?: string;
+    relatedId?: string;
+    type?: string;
+    assigneeId?: string;
+    mine?: string;
+    overdue?: string;
+    completed?: string;
+  };
+  const data = await activitiesService.listActivities(ws(req), {
+    relatedType: q.relatedType,
+    relatedId: q.relatedId,
+    type: q.type,
+    assigneeId: q.assigneeId,
+    mine: q.mine === '1' || q.mine === 'true',
+    overdue: q.overdue === '1' || q.overdue === 'true',
+    completed: q.completed,
+    userId: uid(req),
+  });
   res.json({ success: true, data });
 }
 
@@ -119,6 +143,11 @@ export async function completeActivity(req: Request & { user?: AuthPayload }, re
   res.json({ success: true, data });
 }
 
+export async function updateActivity(req: Request & { user?: AuthPayload }, res: Response) {
+  const data = await activitiesService.updateActivity(req.params.id, ws(req), req.body ?? {});
+  res.json({ success: true, data });
+}
+
 export async function deleteActivity(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await activitiesService.deleteActivity(req.params.id, ws(req));
   res.json({ success: true, data });
@@ -126,24 +155,76 @@ export async function deleteActivity(req: Request & { user?: AuthPayload }, res:
 
 export async function listLeads(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { status?: string };
-  const data = await leadsService.listLeads(ws(req), q.status);
+  const q = req.query as {
+    status?: string;
+    source?: string;
+    assigneeId?: string;
+    serviceInterest?: string;
+    search?: string;
+    page?: string;
+    limit?: string;
+    mine?: string;
+    campaignId?: string;
+  };
+  const assigneeId = q.mine === '1' || q.mine === 'true' ? uid(req) : q.assigneeId;
+  const data = await leadsService.listLeads(ws(req), {
+    status: q.status,
+    source: q.source,
+    assigneeId,
+    serviceInterest: q.serviceInterest,
+    search: q.search,
+    page: q.page ? parseInt(q.page, 10) : undefined,
+    limit: q.limit ? parseInt(q.limit, 10) : undefined,
+    campaignId: q.campaignId,
+  });
+  res.json({ success: true, data });
+}
+
+export async function getLeadStats(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await leadsService.getLeadStats(ws(req));
+  res.json({ success: true, data });
+}
+
+export async function getLead(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await leadsService.getLead(req.params.id, ws(req));
   res.json({ success: true, data });
 }
 
 export async function createLead(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await leadsService.createLead(ws(req), req.body);
+  const data = await leadsService.createLead(ws(req), req.body, uid(req));
   res.status(201).json({ success: true, data });
 }
 
 export async function updateLead(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await leadsService.updateLead(req.params.id, ws(req), req.body);
+  const data = await leadsService.updateLead(req.params.id, ws(req), req.body, uid(req));
+  res.json({ success: true, data });
+}
+
+export async function deleteLead(req: Request & { user?: AuthPayload }, res: Response) {
+  const data = await leadsService.deleteLead(req.params.id, ws(req), uid(req));
   res.json({ success: true, data });
 }
 
 export async function convertLead(req: Request & { user?: AuthPayload }, res: Response) {
-  const body = req.body as { pipelineId?: string };
-  const data = await leadsService.convertLead(req.params.id, ws(req), uid(req), body.pipelineId);
+  const body = req.body as {
+    pipelineId?: string;
+    customerOrgId?: string;
+    dealValue?: number;
+    expectedCloseDate?: string;
+    createProject?: boolean;
+    createPortalOrg?: boolean;
+    portalOrg?: {
+      name?: string;
+      contactEmail?: string;
+      contactPhone?: string;
+      description?: string;
+      adminName?: string;
+      adminEmail?: string;
+    };
+  };
+  const data = await leadsService.convertLead(req.params.id, ws(req), uid(req), body);
   res.json({ success: true, data });
 }
 
@@ -205,8 +286,12 @@ export async function updatePipeline(req: Request & { user?: AuthPayload }, res:
 
 export async function listQuotes(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { dealId?: string; accountId?: string };
-  const data = await quotesService.listQuotes(ws(req), { dealId: q.dealId, accountId: q.accountId });
+  const q = req.query as { dealId?: string; accountId?: string; customerOrgId?: string };
+  const data = await quotesService.listQuotes(ws(req), {
+    dealId: q.dealId,
+    accountId: q.accountId,
+    customerOrgId: q.customerOrgId,
+  });
   res.json({ success: true, data });
 }
 
@@ -248,9 +333,10 @@ export async function deleteQuote(req: Request & { user?: AuthPayload }, res: Re
 
 export async function listContracts(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { accountId?: string; kind?: string; status?: string; renewingWithinDays?: string };
+  const q = req.query as { accountId?: string; customerOrgId?: string; kind?: string; status?: string; renewingWithinDays?: string };
   const data = await contractsService.listContracts(ws(req), {
     accountId: q.accountId,
+    customerOrgId: q.customerOrgId,
     kind: q.kind,
     status: q.status,
     renewingWithinDays: q.renewingWithinDays ? Number(q.renewingWithinDays) : undefined,
@@ -282,6 +368,34 @@ export async function deleteContract(req: Request & { user?: AuthPayload }, res:
 export async function getContractsHubDashboard(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
   const data = await contractsService.getContractsHubDashboard(ws(req));
+  res.json({ success: true, data });
+}
+
+export async function listCampaigns(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const q = req.query as { status?: string; search?: string };
+  const data = await campaignsService.listCampaigns(ws(req), q);
+  res.json({ success: true, data });
+}
+
+export async function getCampaign(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await campaignsService.getCampaign(req.params.id, ws(req));
+  res.json({ success: true, data });
+}
+
+export async function createCampaign(req: Request & { user?: AuthPayload }, res: Response) {
+  const data = await campaignsService.createCampaign(ws(req), req.body ?? {});
+  res.status(201).json({ success: true, data });
+}
+
+export async function updateCampaign(req: Request & { user?: AuthPayload }, res: Response) {
+  const data = await campaignsService.updateCampaign(req.params.id, ws(req), req.body ?? {});
+  res.json({ success: true, data });
+}
+
+export async function deleteCampaign(req: Request & { user?: AuthPayload }, res: Response) {
+  const data = await campaignsService.deleteCampaign(req.params.id, ws(req));
   res.json({ success: true, data });
 }
 

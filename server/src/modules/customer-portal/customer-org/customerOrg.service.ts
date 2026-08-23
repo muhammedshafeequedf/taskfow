@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { CustomerOrg } from './customerOrg.model';
-import { syncCrmAccountFromCustomerOrg } from '../../crm/crmBridge.service';
+import { upsertContactByEmail } from '../../crm/contacts/contacts.service';
 import { CustomerRole } from '../customer-role/customerRole.model';
 import { CustomerUser } from '../customer-user/customerUser.model';
 import { CustomerRequest } from '../customer-request/customerRequest.model';
@@ -44,7 +44,8 @@ function generateSlug(name: string): string {
 export async function createOrg(
   input: CreateOrgInput,
   createdBy: string,
-  taskflowOrganizationId: string
+  taskflowOrganizationId: string,
+  _opts?: { existingCrmAccountId?: string }
 ): Promise<unknown> {
   let slug = input.slug ?? generateSlug(input.name);
 
@@ -115,9 +116,15 @@ export async function createOrg(
     )
   ).catch((err) => console.error('Failed to send org admin invite email:', err));
 
-  await syncCrmAccountFromCustomerOrg(String(org._id), taskflowOrganizationId, createdBy).catch((err) =>
-    console.error('Failed to sync CRM account from customer org:', err)
-  );
+  await upsertContactByEmail(taskflowOrganizationId, {
+    email: input.adminEmail,
+    name: input.adminName,
+    phone: input.contactPhone,
+    origin: 'portal',
+    customerOrgId: String(org._id),
+    customerUserId: String(adminUser._id),
+    isPrimary: true,
+  }).catch((err) => console.error('Failed to upsert contact from org admin:', err));
 
   return {
     org: org.toObject(),
@@ -136,7 +143,7 @@ export async function listOrgs(
   taskflowOrganizationId: string
 ): Promise<unknown> {
   const page = Math.max(1, query.page ?? 1);
-  const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+  const limit = Math.min(500, Math.max(1, query.limit ?? 20));
   const skip = (page - 1) * limit;
   const filter: Record<string, unknown> = {
     taskflowOrganizationId: new mongoose.Types.ObjectId(taskflowOrganizationId),
@@ -200,9 +207,15 @@ export async function updateOrg(id: string, input: UpdateOrgInput, taskflowOrgan
 
   const updated = await CustomerOrg.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
   if (!updated) throw new ApiError(404, 'Organisation not found');
-  await syncCrmAccountFromCustomerOrg(id, taskflowOrganizationId).catch((err) =>
-    console.error('Failed to sync CRM account from customer org:', err)
-  );
+  if (updated.contactEmail) {
+    await upsertContactByEmail(taskflowOrganizationId, {
+      email: String(updated.contactEmail),
+      name: updated.name,
+      phone: updated.contactPhone,
+      origin: 'portal',
+      customerOrgId: id,
+    }).catch((err) => console.error('Failed to upsert contact from org update:', err));
+  }
   return updated;
 }
 

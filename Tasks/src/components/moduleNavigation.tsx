@@ -122,9 +122,6 @@ export function buildCrmNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.crm.lead.list', 'taskflow.crm.lead.create')) {
     nav.push({ to: '/crm/leads', label: 'Leads', icon: <IssuesIcon /> });
   }
-  if (allow(user, 'taskflow.crm.account.list')) {
-    nav.push({ to: '/crm/accounts', label: 'Accounts', icon: <UsersIcon /> });
-  }
   if (allow(user, 'taskflow.crm.contact.list')) {
     nav.push({ to: '/crm/contacts', label: 'Contacts', icon: <UsersIcon /> });
   }
@@ -134,7 +131,11 @@ export function buildCrmNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.crm.quote.list')) {
     nav.push({ to: '/crm/quotes', label: 'Quotes', icon: <SettingsIcon /> });
   }
+  if (allow(user, 'taskflow.crm.campaign.list', 'taskflow.crm.campaign.create')) {
+    nav.push({ to: '/crm/campaigns', label: 'Campaigns', icon: <InboxIcon /> });
+  }
   if (allow(user, 'taskflow.crm.activity.list', 'taskflow.crm.activity.create')) {
+    nav.push({ to: '/crm/follow-ups', label: 'Follow-ups', icon: <TimesheetIcon /> });
     nav.push({ to: '/crm/activities', label: 'Activities', icon: <TimesheetIcon /> });
   }
   if (allow(user, 'taskflow.crm.contract.list', 'taskflow.crm.contract.create')) {
@@ -142,19 +143,6 @@ export function buildCrmNav(user: NavUser): NavItem[] {
   }
   if (allow(user, 'taskflow.crm.settings.manage')) {
     nav.push({ to: '/crm/settings', label: 'Settings', icon: <AppHubSettingsIcon /> });
-  }
-  return nav;
-}
-
-/** Mail */
-export function buildMailNav(user: NavUser): NavItem[] {
-  const nav: NavItem[] = [];
-  if (!allow(user, 'taskflow.mail.mailbox.read', 'taskflow.mail.message.read', 'taskflow.mail.mailbox.send')) {
-    return nav;
-  }
-  nav.push({ to: '/mail', label: 'Inbox', icon: <InboxIcon />, end: true });
-  if (allow(user, 'taskflow.mail.mailbox.send', 'taskflow.mail.mailbox.read')) {
-    nav.push({ to: '/mail/compose', label: 'Compose', icon: <SettingsIcon /> });
   }
   return nav;
 }

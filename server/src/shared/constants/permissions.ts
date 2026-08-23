@@ -288,6 +288,13 @@ export const TASK_FLOW_PERMISSIONS = {
         DELETE: 'taskflow.crm.contract.delete',
         LIST: 'taskflow.crm.contract.list',
       },
+      CAMPAIGN: {
+        CREATE: 'taskflow.crm.campaign.create',
+        READ: 'taskflow.crm.campaign.read',
+        UPDATE: 'taskflow.crm.campaign.update',
+        DELETE: 'taskflow.crm.campaign.delete',
+        LIST: 'taskflow.crm.campaign.list',
+      },
       REPORT: { READ: 'taskflow.crm.report.read' },
       SETTINGS: { MANAGE: 'taskflow.crm.settings.manage' },
     },

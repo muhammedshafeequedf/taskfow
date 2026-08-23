@@ -32,6 +32,13 @@ export async function listCurrencies(req: Request & { user?: AuthPayload }, res:
   res.json({ success: true, data });
 }
 
+export async function listCountries(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const activeOnly = String(req.query.activeOnly ?? 'true') !== 'false';
+  const data = await core.listCountries({ activeOnly });
+  res.json({ success: true, data });
+}
+
 export async function setCurrencyActive(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
   const isActive = Boolean(req.body?.isActive);

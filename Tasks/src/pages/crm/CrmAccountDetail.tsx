@@ -37,6 +37,7 @@ export default function CrmAccountDetail() {
   const [quotes, setQuotes] = useState<CrmQuote[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [note, setNote] = useState('');
+  const [followDue, setFollowDue] = useState('');
   const [contactForm, setContactForm] = useState({ name: '', email: '', phone: '' });
   const [linkProjectId, setLinkProjectId] = useState('');
 
@@ -70,6 +71,22 @@ export default function CrmAccountDetail() {
     if (!token || !id || !note.trim()) return;
     await crmApi.createActivity({ type: 'note', subject: note.trim(), relatedType: 'account', relatedId: id }, token);
     setNote('');
+    load();
+  };
+
+  const addFollowUp = async () => {
+    if (!token || !id || !followDue) return;
+    await crmApi.createActivity(
+      {
+        type: 'follow_up',
+        subject: `Follow up: ${view?.account.name || 'Account'}`,
+        dueAt: new Date(followDue).toISOString(),
+        relatedType: 'account',
+        relatedId: id,
+      },
+      token
+    );
+    setFollowDue('');
     load();
   };
 
@@ -284,16 +301,29 @@ export default function CrmAccountDetail() {
         <section className="rounded-2xl border border-[color:var(--border-subtle)] p-5 lg:col-span-2">
           <h2 className="font-medium mb-3">Timeline</h2>
           {canActivity && (
-            <div className="flex gap-2 mb-3">
-              <input
-                className="flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm"
-                placeholder="Add note…"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-              <button type="button" onClick={addNote} className="btn-primary px-4 py-2 rounded-lg text-sm">
-                Add
-              </button>
+            <div className="space-y-2 mb-3">
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm"
+                  placeholder="Add note…"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+                <button type="button" onClick={addNote} className="btn-primary px-4 py-2 rounded-lg text-sm">
+                  Add
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  className="flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm"
+                  value={followDue}
+                  onChange={(e) => setFollowDue(e.target.value)}
+                />
+                <button type="button" onClick={addFollowUp} className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm">
+                  Log follow-up
+                </button>
+              </div>
             </div>
           )}
           <ul className="space-y-2 text-sm">

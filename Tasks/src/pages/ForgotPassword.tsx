@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authApi } from '../lib/api';
+import { authApi, portalApi } from '../lib/api';
 import { APP_NAME } from '../brand';
 import AtriumLogo from '../components/AtriumLogo';
 
@@ -14,10 +14,10 @@ export default function ForgotPassword() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const res = await authApi.forgotPassword(email.trim());
+    await authApi.forgotPassword(email.trim());
+    await portalApi.forgotPassword(email.trim());
     setLoading(false);
-    if (res.success) setSent(true);
-    else setError((res as { message?: string }).message ?? 'Request failed');
+    setSent(true);
   }
 
   if (sent) {
@@ -72,7 +72,7 @@ export default function ForgotPassword() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-xl bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/50 focus:border-[color:var(--accent)] transition"
+              className="w-full px-4 py-3 rounded-xl bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-base text-[color:var(--text-primary)] placeholder-[color:var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/50 focus:border-[color:var(--accent)] transition"
               placeholder="you@example.com"
             />
           </div>

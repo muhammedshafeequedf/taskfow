@@ -1,4 +1,5 @@
 export { Currency, type ICurrency } from './models/currency.model';
+export { Country, type ICountry } from './models/country.model';
 export { CoreCompanySettings, type ICoreCompanySettings } from './models/coreCompanySettings.model';
 export { CurrencyExchangeRate, type ICurrencyExchangeRate } from './models/currencyExchangeRate.model';
 export {

@@ -74,19 +74,25 @@ function billingLabel(type: CrmQuoteBillingType): string {
 
 export async function listQuotes(
   workspaceId: string | null | undefined,
-  opts?: { dealId?: string; accountId?: string }
+  opts?: { dealId?: string; accountId?: string; customerOrgId?: string }
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (opts?.dealId) filter.dealId = opts.dealId;
-  if (opts?.accountId) filter.accountId = opts.accountId;
-  return CrmQuote.find(filter).sort({ createdAt: -1 }).lean();
+  if (opts?.customerOrgId) filter.customerOrgId = opts.customerOrgId;
+  else if (opts?.accountId) filter.accountId = opts.accountId;
+  return CrmQuote.find(filter)
+    .populate('customerOrgId', 'name')
+    .populate('accountId', 'name type')
+    .sort({ createdAt: -1 })
+    .lean();
 }
 
 export async function getQuote(id: string, workspaceId: string | null | undefined) {
   const orgId = requireWorkspaceId(workspaceId);
   const quote = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) })
     .populate('dealId', 'title status value currency')
+    .populate('customerOrgId', 'name contactEmail')
     .populate('accountId', 'name type industry website')
     .populate('createdBy', 'name email')
     .lean();
@@ -109,6 +115,8 @@ export async function createQuote(
     taskflowOrganizationId: toOrgOid(orgId),
     dealId: deal._id,
     accountId: deal.accountId,
+    customerOrgId: deal.customerOrgId,
+    contactId: deal.contactId || input.contactId || undefined,
     title: String(input.title ?? `Quote for ${deal.title}`).trim(),
     status: 'draft',
     version: 1,
@@ -132,13 +140,16 @@ export async function sendQuote(
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const quote = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) })
+    .populate('customerOrgId', 'name')
     .populate('accountId', 'name')
     .lean();
   if (!quote) throw new ApiError(404, 'Quote not found');
   const accountName =
-    quote.accountId && typeof quote.accountId === 'object' && 'name' in quote.accountId
-      ? String((quote.accountId as { name?: string }).name ?? '')
-      : '';
+    quote.customerOrgId && typeof quote.customerOrgId === 'object' && 'name' in quote.customerOrgId
+      ? String((quote.customerOrgId as { name?: string }).name ?? '')
+      : quote.accountId && typeof quote.accountId === 'object' && 'name' in quote.accountId
+        ? String((quote.accountId as { name?: string }).name ?? '')
+        : '';
   const lines = (quote.lineItems ?? [])
     .map((l) => {
       const qtyLabel = l.billingType === 'hourly' ? `${l.quantity} hrs` : String(l.quantity);
@@ -258,6 +269,7 @@ async function convertAcceptedQuote(
     _id: unknown;
     title: string;
     accountId?: unknown;
+    customerOrgId?: unknown;
     dealId?: unknown;
     currency?: string;
     subtotal?: number;
@@ -272,17 +284,21 @@ async function convertAcceptedQuote(
       amount?: number;
       billingType?: string;
     }[];
+    createdBy?: unknown;
   },
   orgId: string
-): Promise<{ contractId?: string; invoiceId?: string }> {
-  const result: { contractId?: string; invoiceId?: string } = {};
+  ): Promise<{ contractId?: string; invoiceId?: string; handoff?: unknown }> {
+  const result: { contractId?: string; invoiceId?: string; handoff?: unknown } = {};
   const orgOid = toOrgOid(orgId);
-  if (!quote.accountId) return result;
+  if (!quote.customerOrgId && !quote.accountId) return result;
   try {
+    const { hourlyRateFromQuoteLines } = await import('../commercialHandoff.service');
+    const hourlyRate = hourlyRateFromQuoteLines(quote.lineItems);
     const contractValue = quote.total ?? quote.subtotal ?? 0;
     const contract = await CrmContract.create({
       taskflowOrganizationId: orgOid,
       accountId: quote.accountId,
+      customerOrgId: quote.customerOrgId,
       dealId: quote.dealId || undefined,
       title: quote.title,
       kind: 'other',
@@ -291,6 +307,7 @@ async function convertAcceptedQuote(
       billingCycle: 'one_time',
       startDate: new Date(),
       status: 'draft',
+      hourlyRate,
     });
     result.contractId = String(contract._id);
 
@@ -315,6 +332,7 @@ async function convertAcceptedQuote(
     const taxTotal = quote.taxTotal ?? round2(lines.reduce((s, l) => s + l.amount * (l.taxRate / 100), 0));
     const total = quote.total ?? round2(subtotal + taxTotal);
     const count = await BillingInvoice.countDocuments({ taskflowOrganizationId: orgOid });
+    if (quote.accountId) {
     const invoice = await BillingInvoice.create({
       taskflowOrganizationId: orgOid,
       accountId: quote.accountId,
@@ -331,6 +349,19 @@ async function convertAcceptedQuote(
       notes: `Generated from accepted quote "${quote.title}"`,
     });
     result.invoiceId = String(invoice._id);
+    }
+
+    const { runCommercialHandoff } = await import('../commercialHandoff.service');
+    result.handoff = await runCommercialHandoff({
+      workspaceId: orgId,
+      userId: String(quote.createdBy ?? ''),
+      customerOrgId: quote.customerOrgId ? String(quote.customerOrgId) : undefined,
+      dealId: quote.dealId ? String(quote.dealId) : undefined,
+      quoteId: String(quote._id),
+      contractId: result.contractId,
+      projectTitle: quote.title,
+      createPortalOrg: false,
+    });
   } catch {
     /* best-effort conversion */
   }

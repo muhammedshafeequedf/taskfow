@@ -8,6 +8,7 @@ import { WorkLog } from '../workLogs/workLog.model';
 import { BillingSubscription } from './models/billingSubscription.model';
 import { BillingInvoice, type IBillingInvoiceLine } from './models/billingInvoice.model';
 import { BillingTaxRule } from './models/billingTaxRule.model';
+import { resolveProjectHourlyRate } from '../crm/commercialHandoff.service';
 
 function asDate(value: unknown): Date | undefined {
   if (value === null || value === undefined || value === '') return undefined;
@@ -474,6 +475,7 @@ export async function recordPayment(
   invoice.amountPaid = Math.round(((invoice.amountPaid ?? 0) + applied) * 100) / 100;
   if (invoice.amountPaid >= invoice.total - 0.01) {
     invoice.status = 'paid';
+    invoice.postedToAccounts = true;
   } else if (invoice.status === 'draft') {
     invoice.status = 'sent';
   }
@@ -589,24 +591,24 @@ export async function getUnbilledTimeSummary(workspaceId: string | null | undefi
     minutesByProject.set(pid, (minutesByProject.get(pid) ?? 0) + (log.minutesSpent ?? 0));
   }
 
-  // Approximate hourly rate from linked subscription unitPrice or default 100
   const defaultRate = 100;
-  const projectRows = projects
-    .map((p) => {
-      const minutes = minutesByProject.get(String(p._id)) ?? 0;
-      const hours = Math.round((minutes / 60) * 10) / 10;
-      return {
-        projectId: String(p._id),
-        projectName: p.name,
-        projectKey: p.key,
-        accountId: p.crmAccountId ? String(p.crmAccountId) : undefined,
-        hours,
-        estimatedValue: Math.round(hours * defaultRate * 100) / 100,
-        rate: defaultRate,
-      };
-    })
-    .filter((p) => p.hours > 0)
-    .sort((a, b) => b.hours - a.hours);
+  const projectRows = [];
+  for (const p of projects) {
+    const minutes = minutesByProject.get(String(p._id)) ?? 0;
+    const hours = Math.round((minutes / 60) * 10) / 10;
+    if (hours <= 0) continue;
+    const rate = await resolveProjectHourlyRate(orgId, String(p._id)).catch(() => defaultRate);
+    projectRows.push({
+      projectId: String(p._id),
+      projectName: p.name,
+      projectKey: p.key,
+      accountId: p.crmAccountId ? String(p.crmAccountId) : undefined,
+      hours,
+      estimatedValue: Math.round(hours * rate * 100) / 100,
+      rate,
+    });
+  }
+  projectRows.sort((a, b) => b.hours - a.hours);
 
   const totalHours = Math.round(projectRows.reduce((s, p) => s + p.hours, 0) * 10) / 10;
   const estimatedValue = Math.round(projectRows.reduce((s, p) => s + p.estimatedValue, 0) * 100) / 100;
@@ -632,7 +634,7 @@ export async function createInvoiceFromTime(
   const project = await Project.findOne({ _id: input.projectId, taskflowOrganizationId: orgOid });
   if (!project) throw new ApiError(404, 'Project not found');
 
-  const rate = Number(input.rate ?? 100);
+  const rate = Number(input.rate ?? (await resolveProjectHourlyRate(orgId, input.projectId)));
   const hours = Number(input.hours);
   if (hours <= 0) throw new ApiError(400, 'Hours must be greater than zero');
 
@@ -641,6 +643,13 @@ export async function createInvoiceFromTime(
     const tax = await BillingTaxRule.findOne({ taskflowOrganizationId: orgOid, enabled: true }).lean();
     if (tax) taxRate = tax.rate;
   }
+
+  const latestLog = await WorkLog.findOne({
+    issue: { $in: await Issue.find({ project: project._id }).distinct('_id') },
+  })
+    .sort({ date: -1 })
+    .select('_id')
+    .lean();
 
   const lines = normalizeLines([
     {
@@ -651,7 +660,7 @@ export async function createInvoiceFromTime(
       unitPrice: rate,
       taxRate,
       sourceType: 'time',
-      sourceId: String(project._id),
+      sourceId: latestLog ? String(latestLog._id) : String(project._id),
     },
   ]);
   const { subtotal, taxTotal, total } = totalsFromLines(lines);

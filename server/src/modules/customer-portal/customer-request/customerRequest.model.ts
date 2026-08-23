@@ -37,6 +37,8 @@ export interface ICustomerRequest extends Document {
     | 'closed';
   linkedIssueId?: Types.ObjectId;
   linkedIssueKey?: string;
+  linkedServiceTicketId?: Types.ObjectId;
+  workClassification?: 'billable_change' | 'fix';
   closureEmailSentAt?: Date;
   portalComments?: Array<{
     body: string;
@@ -108,6 +110,8 @@ const customerRequestSchema = new Schema<ICustomerRequest>(
     },
     linkedIssueId: { type: Schema.Types.ObjectId, ref: 'Issue' },
     linkedIssueKey: { type: String },
+    linkedServiceTicketId: { type: Schema.Types.ObjectId, ref: 'ServiceTicket' },
+    workClassification: { type: String, enum: ['billable_change', 'fix'] },
     closureEmailSentAt: { type: Date },
     portalComments: {
       type: [
@@ -128,5 +132,6 @@ const customerRequestSchema = new Schema<ICustomerRequest>(
 customerRequestSchema.index({ customerOrgId: 1, status: 1 });
 customerRequestSchema.index({ customerOrgId: 1, createdBy: 1 });
 customerRequestSchema.index({ linkedIssueId: 1 });
+customerRequestSchema.index({ linkedServiceTicketId: 1 });
 
 export const CustomerRequest = mongoose.model<ICustomerRequest>('CustomerRequest', customerRequestSchema);

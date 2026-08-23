@@ -1,61 +1,31 @@
 import mongoose from 'mongoose';
 import { CrmAccount } from './models/crmAccount.model';
-import { CrmContact } from './models/crmContact.model';
 import { CustomerOrg } from '../customer-portal/customer-org/customerOrg.model';
 import { toOrgOid } from './crmWorkspace';
 
-/** Provision or sync a CRM account from a CustomerOrg record. */
+/** Kept for vendor/legacy rows. Client companies are CustomerOrg — do not create CRM accounts. */
 export async function syncCrmAccountFromCustomerOrg(
-  customerOrgId: string,
-  taskflowOrganizationId: string,
-  ownerId?: string
+  _customerOrgId: string,
+  _taskflowOrganizationId: string,
+  _ownerId?: string
 ): Promise<string> {
-  const org = await CustomerOrg.findById(customerOrgId).lean();
-  if (!org) return '';
+  return '';
+}
 
+export async function linkAccountToCustomerOrg(
+  accountId: string,
+  customerOrgId: string,
+  taskflowOrganizationId: string
+): Promise<void> {
   const orgOid = toOrgOid(taskflowOrganizationId);
-  let accountId = (org as { crmAccountId?: mongoose.Types.ObjectId }).crmAccountId;
-
-  if (accountId) {
-    await CrmAccount.findByIdAndUpdate(accountId, {
-      $set: {
-        name: org.name,
-        type: 'client',
-        website: undefined,
-        notes: org.description,
-      },
-    });
-  } else {
-    const account = await CrmAccount.create({
-      taskflowOrganizationId: orgOid,
-      name: org.name,
-      type: 'client',
-      customerOrgId: org._id,
-      ownerId: ownerId && mongoose.Types.ObjectId.isValid(ownerId) ? ownerId : undefined,
-      notes: org.description,
-      tags: ['customer-portal'],
-    });
-    accountId = account._id as mongoose.Types.ObjectId;
-    await CustomerOrg.findByIdAndUpdate(customerOrgId, { $set: { crmAccountId: accountId } });
-  }
-
-  const existingContact = await CrmContact.findOne({
-    accountId,
-    email: org.contactEmail,
-  }).lean();
-
-  if (!existingContact && org.contactEmail) {
-    await CrmContact.create({
-      taskflowOrganizationId: orgOid,
-      accountId,
-      name: org.name,
-      email: org.contactEmail,
-      phone: org.contactPhone,
-      isPrimary: true,
-    });
-  }
-
-  return String(accountId);
+  await CustomerOrg.findOneAndUpdate(
+    { _id: customerOrgId, taskflowOrganizationId: orgOid },
+    { $set: { crmAccountId: accountId } }
+  );
+  await CrmAccount.findOneAndUpdate(
+    { _id: accountId, taskflowOrganizationId: orgOid },
+    { $set: { customerOrgId, type: 'client' } }
+  );
 }
 
 export async function linkProjectToAccount(

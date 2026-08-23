@@ -96,6 +96,16 @@ function DocList({ kind, title, subtitle, isTemplate = false }: { kind: string; 
               <Field label="Currency"><TextInput value={editing.currency ?? 'USD'} onChange={(e) => setEditing({ ...editing, currency: e.target.value })} /></Field>
             </div>
           )}
+          <Field label="Linked to">
+            <Select value={editing.entityType ?? 'none'} onChange={(e) => setEditing({ ...editing, entityType: e.target.value })}>
+              {['none', 'lead', 'account', 'deal', 'contract', 'project'].map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Linked record id">
+            <TextInput value={editing.entityId ?? ''} onChange={(e) => setEditing({ ...editing, entityId: e.target.value })} />
+          </Field>
           <Field label="Content"><TextArea rows={5} value={editing.content ?? ''} onChange={(e) => setEditing({ ...editing, content: e.target.value })} /></Field>
         </Modal>
       )}

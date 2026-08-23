@@ -2,18 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
-import { crmApi, type CrmAccount, type CrmContract } from '../../lib/api';
+import { crmApi, type CrmContract } from '../../lib/api';
 
 export default function CrmContracts() {
   const { token, user } = useAuth();
   const canCreate = canAny(user, 'taskflow.crm.contract.create');
   const canUpdate = canAny(user, 'taskflow.crm.contract.update');
   const [rows, setRows] = useState<CrmContract[]>([]);
-  const [accounts, setAccounts] = useState<CrmAccount[]>([]);
+  const [orgs, setOrgs] = useState<Array<{ _id: string; name: string }>>([]);
   const [modal, setModal] = useState(false);
   const [burn, setBurn] = useState<{ hoursUsed: number; hoursRemaining: number; percentUsed: number } | null>(null);
   const [form, setForm] = useState({
-    accountId: '',
+    customerOrgId: '',
     title: '',
     kind: 'retainer' as 'msa' | 'retainer' | 'amc' | 'other',
     value: 0,
@@ -40,17 +40,17 @@ export default function CrmContracts() {
 
   useEffect(() => {
     if (!token) return;
-    crmApi.listAccounts(token).then((res) => {
-      if (res.success && res.data) setAccounts((res.data as { data: CrmAccount[] }).data ?? []);
+    crmApi.listCustomerOrgs(token).then((res) => {
+      if (res.success && res.data) setOrgs(Array.isArray(res.data) ? res.data : []);
     });
   }, [token]);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !form.accountId || !form.title.trim()) return;
+    if (!token || !form.customerOrgId || !form.title.trim()) return;
     await crmApi.createContract(
       {
-        accountId: form.accountId,
+        customerOrgId: form.customerOrgId,
         title: form.title.trim(),
         kind: form.kind,
         value: Number(form.value) || 0,
@@ -81,13 +81,18 @@ export default function CrmContracts() {
     if (res.success && res.data) setBurn(res.data as typeof burn);
   }
 
-  const accountName = (id: CrmContract['accountId']) => {
-    if (id && typeof id === 'object') return id.name;
-    return accounts.find((a) => a._id === id)?.name ?? String(id);
+  const orgName = (c: CrmContract) => {
+    const ref = c.customerOrgId ?? c.accountId;
+    if (ref && typeof ref === 'object') return ref.name;
+    if (typeof ref === 'string') return orgs.find((o) => o._id === ref)?.name ?? ref;
+    return '—';
   };
 
-  const accountLinkId = (id: CrmContract['accountId']) =>
-    id && typeof id === 'object' ? id._id : String(id);
+  const orgLinkId = (c: CrmContract) => {
+    const ref = c.customerOrgId;
+    if (!ref) return '';
+    return typeof ref === 'object' ? ref._id : ref;
+  };
 
   return (
     <div className="p-8 w-full px-4 sm:px-6 lg:px-8 space-y-4">
@@ -100,9 +105,9 @@ export default function CrmContracts() {
           <button
             type="button"
             className="btn-primary px-4 py-2 rounded-lg text-sm"
-            disabled={accounts.length === 0}
+            disabled={orgs.length === 0}
             onClick={() => {
-              setForm((f) => ({ ...f, accountId: accounts[0]?._id ?? '', title: '' }));
+              setForm((f) => ({ ...f, customerOrgId: orgs[0]?._id ?? '', title: '' }));
               setModal(true);
             }}
           >
@@ -126,9 +131,13 @@ export default function CrmContracts() {
             <div>
               <p className="font-medium">{c.title}</p>
               <p className="text-sm text-[color:var(--text-muted)]">
-                <Link to={`/crm/accounts/${accountLinkId(c.accountId)}`} className="text-[color:var(--accent)] hover:underline">
-                  {accountName(c.accountId)}
+                {orgLinkId(c) ? (
+                <Link to={`/admin/customer-orgs/${orgLinkId(c)}`} className="text-[color:var(--accent)] hover:underline">
+                  {orgName(c)}
                 </Link>
+                ) : (
+                  orgName(c)
+                )}
                 {' '}· {c.kind ?? 'other'} · {c.status} · ${c.value} {c.currency}
                 {c.hoursIncluded != null ? ` · ${c.hoursIncluded}h included` : ''}
               </p>
@@ -155,9 +164,9 @@ export default function CrmContracts() {
           <form onSubmit={create} className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl max-w-md w-full p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold">New contract</h2>
             <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Account</span>
-              <select required value={form.accountId} onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
-                {accounts.map((a) => (
+              <span className="text-[color:var(--text-muted)]">Customer</span>
+              <select required value={form.customerOrgId} onChange={(e) => setForm((f) => ({ ...f, customerOrgId: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
+                {orgs.map((a) => (
                   <option key={a._id} value={a._id}>{a.name}</option>
                 ))}
               </select>

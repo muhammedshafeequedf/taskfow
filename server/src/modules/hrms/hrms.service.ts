@@ -3,6 +3,7 @@ import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { HrmsEmployee } from './models/hrmsEmployee.model';
 import { HrmsLeaveRequest } from './models/hrmsLeaveRequest.model';
 import { HrmsAttendance } from './models/hrmsAttendance.model';
+import { upsertContactByEmail } from '../crm/contacts/contacts.service';
 
 function asDate(value: unknown): Date | undefined {
   if (value === null || value === undefined || value === '') return undefined;
@@ -57,6 +58,17 @@ export async function createEmployee(workspaceId: string | null | undefined, inp
       leaveBalanceDays: Number(input.leaveBalanceDays ?? 20),
       notes: input.notes,
     });
+    if (doc.email) {
+      await upsertContactByEmail(orgId, {
+        email: String(doc.email),
+        name: doc.name,
+        phone: doc.phone,
+        title: doc.designation,
+        origin: 'hrms',
+        employeeId: String(doc._id),
+        userId: doc.userId ? String(doc.userId) : undefined,
+      }).catch(() => undefined);
+    }
     return doc.toObject();
   } catch (err) {
     if ((err as { code?: number }).code === 11000) throw new ApiError(409, 'Employee code already exists');
@@ -84,6 +96,17 @@ export async function updateEmployee(id: string, workspaceId: string | null | un
   if ('joinedDate' in input) existing.joinedDate = asDate(input.joinedDate) ?? existing.joinedDate;
   if ('exitDate' in input) existing.exitDate = asDate(input.exitDate);
   await existing.save();
+  if (existing.email) {
+    await upsertContactByEmail(orgId, {
+      email: String(existing.email),
+      name: existing.name,
+      phone: existing.phone,
+      title: existing.designation,
+      origin: 'hrms',
+      employeeId: String(existing._id),
+      userId: existing.userId ? String(existing.userId) : undefined,
+    }).catch(() => undefined);
+  }
   return existing.toObject();
 }
 

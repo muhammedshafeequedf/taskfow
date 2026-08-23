@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
-import { crmApi, type CrmActivity } from '../../lib/api';
+import { crmApi, usersApi, type CrmAccount, type CrmActivity, type CrmDeal, type CrmLead, type User } from '../../lib/api';
 
 const TYPES = ['task', 'call', 'meeting', 'email', 'note', 'demo', 'follow_up'];
 
@@ -11,18 +12,25 @@ export default function CrmActivities() {
   const canUpdate = canAny(user, 'taskflow.crm.activity.update');
   const canDelete = canAny(user, 'taskflow.crm.activity.delete');
   const [items, setItems] = useState<CrmActivity[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [leads, setLeads] = useState<CrmLead[]>([]);
+  const [deals, setDeals] = useState<CrmDeal[]>([]);
+  const [accounts, setAccounts] = useState<CrmAccount[]>([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({
-    type: 'task',
+    type: 'follow_up',
     subject: '',
     body: '',
     dueAt: '',
+    relatedType: 'lead',
+    relatedId: '',
+    assigneeId: '',
   });
 
   const load = () => {
     if (!token) return;
     crmApi.listActivities(token).then((res) => {
-      if (res.success && res.data) setItems(res.data as CrmActivity[]);
+      if (res.success && res.data) setItems(res.data);
     });
   };
 
@@ -30,20 +38,39 @@ export default function CrmActivities() {
     load();
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    usersApi.list(1, 100, token).then((res) => {
+      if (res.success && res.data) setUsers(res.data.data ?? []);
+    });
+    crmApi.listLeads(token, { limit: 100 }).then((res) => {
+      if (res.success && res.data) setLeads(res.data.data ?? []);
+    });
+    crmApi.listDeals(token).then((res) => {
+      if (res.success && res.data) setDeals(res.data as CrmDeal[]);
+    });
+    crmApi.listAccounts(token).then((res) => {
+      if (res.success && res.data) setAccounts((res.data as { data: CrmAccount[] }).data ?? []);
+    });
+  }, [token]);
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !form.subject.trim()) return;
+    if (!token || !form.subject.trim() || !form.relatedId) return;
     await crmApi.createActivity(
       {
         type: form.type,
         subject: form.subject.trim(),
         body: form.body.trim() || undefined,
         dueAt: form.dueAt || undefined,
+        relatedType: form.relatedType,
+        relatedId: form.relatedId,
+        assigneeId: form.assigneeId || undefined,
       },
       token
     );
     setModal(false);
-    setForm({ type: 'task', subject: '', body: '', dueAt: '' });
+    setForm({ type: 'follow_up', subject: '', body: '', dueAt: '', relatedType: 'lead', relatedId: '', assigneeId: '' });
     load();
   }
 
@@ -60,6 +87,13 @@ export default function CrmActivities() {
     load();
   }
 
+  const relatedOptions =
+    form.relatedType === 'deal'
+      ? deals.map((d) => ({ id: d._id, label: d.title }))
+      : form.relatedType === 'account'
+        ? accounts.map((a) => ({ id: a._id, label: a.name }))
+        : leads.map((l) => ({ id: l._id, label: l.title }));
+
   const open = items.filter((a) => !a.completedAt);
   const done = items.filter((a) => a.completedAt);
 
@@ -68,7 +102,12 @@ export default function CrmActivities() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Activities</h1>
-          <p className="text-[13px] text-[color:var(--text-muted)]">Calls, tasks, meetings, and follow-ups.</p>
+          <p className="text-[13px] text-[color:var(--text-muted)]">
+            Calls, tasks, meetings, and follow-ups.{' '}
+            <Link to="/crm/follow-ups" className="text-[color:var(--accent)] hover:underline">
+              Open follow-up queue
+            </Link>
+          </p>
         </div>
         {canCreate && (
           <button type="button" className="btn-primary px-4 py-2 rounded-lg text-sm" onClick={() => setModal(true)}>
@@ -86,7 +125,11 @@ export default function CrmActivities() {
                 <p className="font-medium text-sm">
                   <span className="text-[color:var(--text-muted)] capitalize">{a.type}</span> — {a.subject}
                 </p>
-                {a.dueAt && <p className="text-xs text-[color:var(--text-muted)]">Due {new Date(a.dueAt).toLocaleString()}</p>}
+                <p className="text-xs text-[color:var(--text-muted)]">
+                  {a.relatedType}
+                  {a.relatedTitle ? ` · ${a.relatedTitle}` : ''}
+                  {a.dueAt ? ` · due ${new Date(a.dueAt).toLocaleString()}` : ''}
+                </p>
                 {a.body && <p className="text-xs text-[color:var(--text-muted)] mt-1">{a.body}</p>}
               </div>
               <div className="flex gap-2 text-sm">
@@ -128,6 +171,43 @@ export default function CrmActivities() {
               <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
                 {TYPES.map((t) => (
                   <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-xs space-y-1">
+                <span className="text-[color:var(--text-muted)]">Related to</span>
+                <select
+                  value={form.relatedType}
+                  onChange={(e) => setForm((f) => ({ ...f, relatedType: e.target.value, relatedId: '' }))}
+                  className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                >
+                  <option value="lead">Lead</option>
+                  <option value="deal">Deal</option>
+                  <option value="account">Account</option>
+                </select>
+              </label>
+              <label className="block text-xs space-y-1">
+                <span className="text-[color:var(--text-muted)]">Record</span>
+                <select
+                  required
+                  value={form.relatedId}
+                  onChange={(e) => setForm((f) => ({ ...f, relatedId: e.target.value }))}
+                  className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                >
+                  <option value="">Select…</option>
+                  {relatedOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="block text-xs space-y-1">
+              <span className="text-[color:var(--text-muted)]">Assignee</span>
+              <select value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: e.target.value }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm">
+                <option value="">Unassigned</option>
+                {users.map((u) => (
+                  <option key={u._id} value={u._id}>{u.name}</option>
                 ))}
               </select>
             </label>

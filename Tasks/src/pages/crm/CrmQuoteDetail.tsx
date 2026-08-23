@@ -8,19 +8,19 @@ import { money } from '../../components/moduleKit';
 import { downloadQuotePdf, quotePdfBase64, quotePdfFilename } from '../../lib/quotePdf';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 
-function refId(ref: CrmQuote['dealId'] | CrmQuote['accountId']): string | undefined {
+function refId(ref: CrmQuote['dealId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId']): string | undefined {
   if (!ref) return undefined;
   if (typeof ref === 'string') return ref;
   return ref._id;
 }
 
 function refLabel(
-  ref: CrmQuote['dealId'] | CrmQuote['accountId'],
-  kind: 'deal' | 'account'
+  ref: CrmQuote['dealId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId'],
+  kind: 'deal' | 'account' | 'customer'
 ): string {
   if (!ref) return '—';
   if (typeof ref === 'string') return ref;
-  if (kind === 'account') return ('name' in ref && ref.name) || '—';
+  if (kind === 'account' || kind === 'customer') return ('name' in ref && ref.name) || '—';
   return ('title' in ref && ref.title) || '—';
 }
 
@@ -179,7 +179,7 @@ export default function CrmQuoteDetail() {
     );
   }
 
-  const accountId = refId(quote.accountId);
+  const customerId = refId(quote.customerOrgId);
   const dealId = refId(quote.dealId);
 
   return (
@@ -330,14 +330,14 @@ export default function CrmQuoteDetail() {
             <h2 className="text-sm font-semibold">Details</h2>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-3">
-                <dt className="text-[color:var(--text-muted)]">Account</dt>
+                <dt className="text-[color:var(--text-muted)]">Customer</dt>
                 <dd className="text-right">
-                  {accountId ? (
-                    <Link to={`/crm/accounts/${accountId}`} className="text-[color:var(--accent)] hover:underline">
-                      {refLabel(quote.accountId, 'account')}
+                  {customerId ? (
+                    <Link to={`/admin/customer-orgs/${customerId}`} className="text-[color:var(--accent)] hover:underline">
+                      {refLabel(quote.customerOrgId, 'customer')}
                     </Link>
                   ) : (
-                    refLabel(quote.accountId, 'account')
+                    refLabel(quote.customerOrgId ?? quote.accountId, 'account')
                   )}
                 </dd>
               </div>
@@ -353,6 +353,16 @@ export default function CrmQuoteDetail() {
                   )}
                 </dd>
               </div>
+              {quote.projectId && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[color:var(--text-muted)]">Project</dt>
+                  <dd>
+                    <Link to={`/projects/${quote.projectId}/dashboard`} className="text-[color:var(--accent)] hover:underline">
+                      Open project
+                    </Link>
+                  </dd>
+                </div>
+              )}
               <div className="flex justify-between gap-3">
                 <dt className="text-[color:var(--text-muted)]">Currency</dt>
                 <dd>{quote.currency}</dd>

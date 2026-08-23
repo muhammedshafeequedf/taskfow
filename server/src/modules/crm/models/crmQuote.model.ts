@@ -22,7 +22,9 @@ export interface ICrmQuoteLine {
 export interface ICrmQuote extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
   dealId: mongoose.Types.ObjectId;
-  accountId: mongoose.Types.ObjectId;
+  accountId?: mongoose.Types.ObjectId;
+  customerOrgId?: mongoose.Types.ObjectId;
+  contactId?: mongoose.Types.ObjectId;
   title: string;
   status: CrmQuoteStatus;
   version: number;
@@ -42,6 +44,7 @@ export interface ICrmQuote extends Document {
   taxCode?: string;
   notes?: string;
   createdBy: mongoose.Types.ObjectId;
+  projectId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,7 +67,9 @@ const crmQuoteSchema = new Schema<ICrmQuote>(
   {
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     dealId: { type: Schema.Types.ObjectId, ref: 'CrmDeal', required: true, index: true },
-    accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', required: true },
+    accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount' },
+    customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
+    contactId: { type: Schema.Types.ObjectId, ref: 'CrmContact' },
     title: { type: String, required: true },
     status: { type: String, enum: ['draft', 'sent', 'accepted', 'rejected', 'expired'], default: 'draft' },
     version: { type: Number, default: 1 },
@@ -79,6 +84,7 @@ const crmQuoteSchema = new Schema<ICrmQuote>(
     taxCode: { type: String },
     notes: { type: String },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
   },
   { timestamps: true }
 );

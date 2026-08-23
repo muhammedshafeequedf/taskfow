@@ -83,6 +83,8 @@ const createProjectSchema = z.object({
     description: z.string().optional(),
     lead: z.string().min(1),
     templateId: z.string().optional(),
+    orgId: z.string().optional(),
+    crmAccountId: z.string().optional(),
   }),
 });
 

@@ -389,6 +389,8 @@ export interface Project {
   canEdit?: boolean;
   /** Set on list response: user has project:delete in this project */
   canDelete?: boolean;
+  crmAccountId?: string;
+  orgId?: string;
 }
 
 export interface ProjectMember {
@@ -1969,6 +1971,15 @@ export interface TicketDetails {
   portalVisibleComments: IssuePortalComment[];
 }
 
+export interface LinkedServiceTicket {
+  _id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  workClassification?: 'billable_change' | 'fix';
+  comments?: Array<{ body: string; authorName?: string; createdAt: string }>;
+}
+
 export interface CustomerRequest {
   _id: string;
   customerOrgId: { _id: string; name: string; slug: string } | string;
@@ -1986,7 +1997,10 @@ export interface CustomerRequest {
   status: string;
   linkedIssueId?: string;
   linkedIssueKey?: string;
+  linkedServiceTicketId?: string;
+  workClassification?: 'billable_change' | 'fix';
   linkedIssue?: LinkedIssueDetails;
+  linkedTicket?: LinkedServiceTicket;
   ticketDetails?: TicketDetails;
   portalComments?: PortalComment[];
   closureEmailSentAt?: string;
@@ -2040,6 +2054,7 @@ export interface CreateRequestInput {
   description: string;
   type: string;
   priority: string;
+  attachments?: string[];
 }
 
 export interface InviteMemberInput {
@@ -2074,13 +2089,15 @@ export interface CrmAccount {
 
 export interface CrmContact {
   _id: string;
-  accountId: string;
+  accountId?: string;
+  customerOrgId?: string | { _id: string; name?: string };
   name: string;
   email?: string;
   phone?: string;
   title?: string;
   department?: string;
   isPrimary?: boolean;
+  origin?: 'crm' | 'lead' | 'portal' | 'hrms' | 'staff';
 }
 
 export interface CrmLead {
@@ -2088,19 +2105,70 @@ export interface CrmLead {
   title: string;
   source: string;
   status: string;
+  score?: number;
+  assigneeId?: string | { _id: string; name?: string; email?: string };
   contactName?: string;
   contactEmail?: string;
   contactPhone?: string;
+  jobTitle?: string;
   companyName?: string;
+  website?: string;
+  industry?: string;
+  companySize?: string;
+  country?: string;
+  serviceInterest?: string[];
+  techStack?: string;
+  estimatedBudget?: number;
+  currency?: string;
+  timeline?: string;
+  decisionRole?: string;
+  campaign?: string;
+  campaignId?: string | { _id: string; name?: string; code?: string; status?: string; utmCampaign?: string };
+  tags?: string[];
+  competitor?: string;
+  ndaRequired?: boolean;
+  rfpReceived?: boolean;
+  nextFollowUpAt?: string;
+  disqualifyReason?: string;
   notes?: string;
-  dealId?: string;
-  accountId?: string;
+  additionalContacts?: Array<{
+    name?: string;
+    email?: string;
+    phone?: string;
+    jobTitle?: string;
+    decisionRole?: string;
+    contactId?: string;
+  }>;
+  dealId?: string | { _id: string; title?: string; status?: string; value?: number; currency?: string };
+  accountId?: string | { _id: string; name?: string; type?: string };
+  customerOrgId?: string | { _id: string; name?: string; status?: string; contactEmail?: string };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CrmLeadList {
+  data: CrmLead[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface CrmLeadStats {
+  statusCounts: Record<string, number>;
+  open: number;
+  overdueFollowUps: number;
+  convertedThisMonth: number;
+  conversionRate: number;
+  total: number;
 }
 
 export interface CrmDeal {
   _id: string;
   title: string;
-  accountId: string | { _id: string; name: string; type?: string };
+  accountId?: string | { _id: string; name: string; type?: string };
+  customerOrgId?: string | { _id: string; name?: string };
+  contactId?: string | { _id: string; name?: string; email?: string };
   stageId: string;
   pipelineId: string;
   value: number;
@@ -2108,6 +2176,7 @@ export interface CrmDeal {
   probability: number;
   status: string;
   expectedCloseDate?: string;
+  projectId?: string;
 }
 
 export interface CrmPipeline {
@@ -2135,6 +2204,8 @@ export interface CrmQuote {
   title: string;
   dealId: string | { _id: string; title?: string; status?: string; value?: number; currency?: string };
   accountId?: string | { _id: string; name?: string; type?: string; industry?: string; website?: string };
+  customerOrgId?: string | { _id: string; name?: string };
+  contactId?: string;
   status: string;
   version?: number;
   subtotal: number;
@@ -2147,6 +2218,7 @@ export interface CrmQuote {
   lineItems?: CrmQuoteLine[];
   notes?: string;
   validUntil?: string;
+  projectId?: string;
   createdBy?: string | { _id: string; name?: string; email?: string };
   createdAt?: string;
   updatedAt?: string;
@@ -2161,12 +2233,36 @@ export interface CrmActivity {
   completedAt?: string;
   relatedType?: string;
   relatedId?: string;
+  relatedTitle?: string;
+  assigneeId?: string | { _id: string; name?: string; email?: string };
+  createdAt?: string;
+}
+
+export interface CrmCampaign {
+  _id: string;
+  name: string;
+  code: string;
+  type: string;
+  status: string;
+  channel?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  startsAt?: string;
+  endsAt?: string;
+  budget?: number;
+  currency?: string;
+  notes?: string;
+  leadCount?: number;
+  convertedCount?: number;
+  openCount?: number;
 }
 
 export interface CrmContract {
   _id: string;
   title: string;
-  accountId: string | { _id: string; name: string; type?: string };
+  accountId?: string | { _id: string; name: string; type?: string };
+  customerOrgId?: string | { _id: string; name?: string };
   kind?: 'msa' | 'retainer' | 'amc' | 'other';
   value: number;
   currency: string;
@@ -2222,6 +2318,11 @@ export interface ServiceTicket {
   resolutionDueAt?: string;
   firstRespondedAt?: string;
   resolvedAt?: string;
+  customerRequestId?: string;
+  linkedIssueId?: string | { _id: string; key?: string; title?: string };
+  projectId?: string | { _id: string; name?: string; key?: string };
+  customerOrgId?: string;
+  workClassification?: 'billable_change' | 'fix';
   csatScore?: number;
   comments?: ServiceTicketComment[];
   createdAt?: string;
@@ -2237,34 +2338,16 @@ export interface KbArticle {
   published: boolean;
 }
 
-export interface MailMailbox {
-  _id: string;
-  name: string;
-  email: string;
-  type: string;
-  syncEnabled: boolean;
-  lastSyncAt?: string;
-}
-
-export interface MailMessage {
-  _id: string;
-  mailboxId: string;
-  subject: string;
-  from: string;
-  to: string[];
-  direction: string;
-  sentAt: string;
-  isRead: boolean;
-  bodyHtml?: string;
-  bodyText?: string;
-  threadId?: string;
-}
-
 export const crmApi = {
   dashboard: (token: string) => api.get('/crm/dashboard', token),
   executiveMetrics: (token: string) => api.get('/crm/executive-metrics', token),
-  listAccounts: (token: string, params?: { search?: string; type?: string }) => {
-    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+  listAccounts: (token: string, params?: { search?: string; type?: string; page?: number; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (params?.search) p.set('search', params.search);
+    if (params?.type) p.set('type', params.type);
+    if (params?.page) p.set('page', String(params.page));
+    if (params?.limit) p.set('limit', String(params.limit));
+    const q = p.toString() ? `?${p}` : '';
     return api.get<{ data: CrmAccount[]; total: number }>(`/crm/accounts${q}`, token);
   },
   getAccount: (id: string, token: string) => api.get<CrmAccount>(`/crm/accounts/${id}`, token),
@@ -2274,19 +2357,73 @@ export const crmApi = {
   deleteAccount: (id: string, token: string) => api.delete(`/crm/accounts/${id}`, token),
   linkProject: (accountId: string, projectId: string, token: string) =>
     api.post(`/crm/accounts/${accountId}/link-project`, { projectId }, token),
-  listContacts: (token: string, params?: { accountId?: string; search?: string }) => {
+  listCustomerOrgs: (token: string) => api.get<{ _id: string; name: string; contactEmail?: string; status?: string }[]>('/crm/customer-orgs', token),
+  listContacts: (token: string, params?: { accountId?: string; customerOrgId?: string; search?: string; origin?: string }) => {
     const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     return api.get<CrmContact[]>(`/crm/contacts${q}`, token);
   },
   createContact: (data: Partial<CrmContact>, token: string) => api.post('/crm/contacts', data, token),
   updateContact: (id: string, data: Partial<CrmContact>, token: string) => api.patch(`/crm/contacts/${id}`, data, token),
   deleteContact: (id: string, token: string) => api.delete(`/crm/contacts/${id}`, token),
-  listLeads: (token: string, status?: string) =>
-    api.get<CrmLead[]>(`/crm/leads${status ? `?status=${status}` : ''}`, token),
-  createLead: (data: Partial<CrmLead>, token: string) => api.post('/crm/leads', data, token),
-  updateLead: (id: string, data: Partial<CrmLead>, token: string) => api.patch(`/crm/leads/${id}`, data, token),
-  convertLead: (id: string, pipelineId: string | undefined, token: string) =>
-    api.post(`/crm/leads/${id}/convert`, { pipelineId }, token),
+  listLeads: (
+    token: string,
+    params?: {
+      status?: string;
+      source?: string;
+      assigneeId?: string;
+      serviceInterest?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+      mine?: boolean;
+      campaignId?: string;
+    }
+  ) => {
+    const p = new URLSearchParams();
+    if (params?.status) p.set('status', params.status);
+    if (params?.source) p.set('source', params.source);
+    if (params?.assigneeId) p.set('assigneeId', params.assigneeId);
+    if (params?.serviceInterest) p.set('serviceInterest', params.serviceInterest);
+    if (params?.search) p.set('search', params.search);
+    if (params?.page) p.set('page', String(params.page));
+    if (params?.limit) p.set('limit', String(params.limit));
+    if (params?.mine) p.set('mine', '1');
+    if (params?.campaignId) p.set('campaignId', params.campaignId);
+    const q = p.toString();
+    return api.get<CrmLeadList>(`/crm/leads${q ? `?${q}` : ''}`, token);
+  },
+  getLeadStats: (token: string) => api.get<CrmLeadStats>('/crm/leads/stats', token),
+  getLead: (id: string, token: string) => api.get<CrmLead>(`/crm/leads/${id}`, token),
+  createLead: (data: Partial<CrmLead>, token: string) => api.post<CrmLead>('/crm/leads', data, token),
+  updateLead: (id: string, data: Partial<CrmLead>, token: string) => api.patch<CrmLead>(`/crm/leads/${id}`, data, token),
+  deleteLead: (id: string, token: string) => api.delete(`/crm/leads/${id}`, token),
+  convertLead: (
+    id: string,
+    body:
+      | {
+          pipelineId?: string;
+          customerOrgId?: string;
+          dealValue?: number;
+          expectedCloseDate?: string;
+          createProject?: boolean;
+          createPortalOrg?: boolean;
+          portalOrg?: {
+            name?: string;
+            contactEmail?: string;
+            contactPhone?: string;
+            description?: string;
+            adminName?: string;
+            adminEmail?: string;
+          };
+        }
+      | string
+      | undefined,
+    token: string
+  ) => {
+    const payload =
+      typeof body === 'string' || body === undefined ? { pipelineId: body } : body;
+    return api.post(`/crm/leads/${id}/convert`, payload, token);
+  },
   listDeals: (token: string, params?: { status?: string }) => {
     const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     return api.get<CrmDeal[]>(`/crm/deals${q}`, token);
@@ -2301,9 +2438,10 @@ export const crmApi = {
   createPipeline: (data: Record<string, unknown>, token: string) => api.post<CrmPipeline>('/crm/pipelines', data, token),
   updatePipeline: (id: string, data: Record<string, unknown>, token: string) =>
     api.patch<CrmPipeline>(`/crm/pipelines/${id}`, data, token),
-  listQuotes: (token: string, opts?: { dealId?: string; accountId?: string }) => {
+  listQuotes: (token: string, opts?: { dealId?: string; accountId?: string; customerOrgId?: string }) => {
     const p = new URLSearchParams();
     if (opts?.dealId) p.set('dealId', opts.dealId);
+    if (opts?.customerOrgId) p.set('customerOrgId', opts.customerOrgId);
     if (opts?.accountId) p.set('accountId', opts.accountId);
     const q = p.toString();
     return api.get<CrmQuote[]>(`/crm/quotes${q ? `?${q}` : ''}`, token);
@@ -2332,32 +2470,61 @@ export const crmApi = {
     const payload = typeof body === 'string' ? { toEmail: body } : body;
     return api.post(`/crm/quotes/${id}/send`, payload, token);
   },
-  listContracts: (token: string, opts?: { accountId?: string; kind?: string; status?: string; renewingWithinDays?: number }) => {
+  listContracts: (token: string, opts?: { accountId?: string; customerOrgId?: string; kind?: string; status?: string; renewingWithinDays?: number }) => {
     const p = new URLSearchParams();
     if (opts?.accountId) p.set('accountId', opts.accountId);
+    if (opts?.customerOrgId) p.set('customerOrgId', opts.customerOrgId);
     if (opts?.kind) p.set('kind', opts.kind);
     if (opts?.status) p.set('status', opts.status);
     if (opts?.renewingWithinDays != null) p.set('renewingWithinDays', String(opts.renewingWithinDays));
     const q = p.toString();
     return api.get<CrmContract[]>(`/crm/contracts${q ? `?${q}` : ''}`, token);
   },
-  createContract: (data: Partial<CrmContract> & { startDate?: string; accountId: string }, token: string) =>
+  createContract: (data: Partial<CrmContract> & { startDate?: string; customerOrgId?: string; accountId?: string }, token: string) =>
     api.post('/crm/contracts', data, token),
   updateContract: (id: string, data: Partial<CrmContract>, token: string) =>
     api.patch(`/crm/contracts/${id}`, data, token),
   deleteContract: (id: string, token: string) => api.delete(`/crm/contracts/${id}`, token),
   getContractBurnDown: (id: string, token: string) => api.get(`/crm/contracts/${id}/burn-down`, token),
-  listActivities: (token: string, relatedType?: string, relatedId?: string) => {
+  listActivities: (
+    token: string,
+    params?: {
+      relatedType?: string;
+      relatedId?: string;
+      type?: string;
+      mine?: boolean;
+      overdue?: boolean;
+      completed?: string;
+    }
+  ) => {
     const p = new URLSearchParams();
-    if (relatedType) p.set('relatedType', relatedType);
-    if (relatedId) p.set('relatedId', relatedId);
+    if (params?.relatedType) p.set('relatedType', params.relatedType);
+    if (params?.relatedId) p.set('relatedId', params.relatedId);
+    if (params?.type) p.set('type', params.type);
+    if (params?.mine) p.set('mine', '1');
+    if (params?.overdue) p.set('overdue', '1');
+    if (params?.completed) p.set('completed', params.completed);
     const q = p.toString() ? `?${p}` : '';
     return api.get<CrmActivity[]>(`/crm/activities${q}`, token);
   },
-  createActivity: (data: Partial<CrmActivity> & { relatedType?: string; relatedId?: string }, token: string) =>
+  createActivity: (data: Partial<CrmActivity> & { relatedType?: string; relatedId?: string; assigneeId?: string }, token: string) =>
     api.post('/crm/activities', data, token),
+  updateActivity: (id: string, data: Partial<CrmActivity> & { dueAt?: string; assigneeId?: string }, token: string) =>
+    api.patch(`/crm/activities/${id}`, data, token),
   completeActivity: (id: string, token: string) => api.post(`/crm/activities/${id}/complete`, {}, token),
   deleteActivity: (id: string, token: string) => api.delete(`/crm/activities/${id}`, token),
+  listCampaigns: (token: string, params?: { status?: string; search?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.status) p.set('status', params.status);
+    if (params?.search) p.set('search', params.search);
+    const q = p.toString() ? `?${p}` : '';
+    return api.get<CrmCampaign[]>(`/crm/campaigns${q}`, token);
+  },
+  getCampaign: (id: string, token: string) => api.get<CrmCampaign>(`/crm/campaigns/${id}`, token),
+  createCampaign: (data: Partial<CrmCampaign>, token: string) => api.post<CrmCampaign>('/crm/campaigns', data, token),
+  updateCampaign: (id: string, data: Partial<CrmCampaign>, token: string) =>
+    api.patch<CrmCampaign>(`/crm/campaigns/${id}`, data, token),
+  deleteCampaign: (id: string, token: string) => api.delete(`/crm/campaigns/${id}`, token),
   listWebhooks: (token: string) => api.get<CrmWebhook[]>('/crm/webhooks', token),
   createWebhook: (data: { name: string; url: string; events: string[] }, token: string) =>
     api.post<CrmWebhook>('/crm/webhooks', data, token),
@@ -2516,6 +2683,15 @@ export interface CoreCurrency {
   isActive: boolean;
 }
 
+export interface CoreCountry {
+  _id: string;
+  iso2: string;
+  iso3?: string;
+  name: string;
+  currencyCodes: string[];
+  isActive: boolean;
+}
+
 export interface CoreExchangeRateRow {
   _id?: string;
   currencyCode: string;
@@ -2553,6 +2729,8 @@ export const coreApi = {
     api.patch<CoreCompanySettings>('/core/company', data, token),
   listCurrencies: (token: string, activeOnly = true) =>
     api.get<CoreCurrency[]>(`/core/currencies?activeOnly=${activeOnly ? 'true' : 'false'}`, token),
+  listCountries: (token: string, activeOnly = true) =>
+    api.get<CoreCountry[]>(`/core/countries?activeOnly=${activeOnly ? 'true' : 'false'}`, token),
   setCurrencyActive: (code: string, isActive: boolean, token: string) =>
     api.patch<CoreCurrency>(`/core/currencies/${encodeURIComponent(code)}`, { isActive }, token),
   listExchangeRates: (token: string, opts?: {
@@ -2729,7 +2907,9 @@ export interface PurchaseOrder {
   _id: string;
   poNumber: string;
   title: string;
+  projectId?: string | { _id: string; name?: string; key?: string };
   vendorAccountId: string | { _id: string; name: string };
+  contractId?: string | { _id: string; title?: string };
   category: string;
   status: string;
   currency: string;
@@ -2763,6 +2943,8 @@ export interface AccountExpense {
   category: string;
   status: string;
   vendorAccountId?: string | { _id: string; name: string };
+  purchaseOrderId?: string | { _id: string; poNumber?: string };
+  projectId?: string | { _id: string; name?: string; key?: string };
   amount: number;
   currency: string;
   expenseDate: string;
@@ -2882,19 +3064,6 @@ export const searchApi = {
     api.get<{ query: string; hits: SearchHit[]; groups: Record<string, number> }>(`/search?q=${encodeURIComponent(q)}`, token),
 };
 
-export const mailApi = {
-  listMailboxes: (token: string) => api.get<MailMailbox[]>('/mail/mailboxes', token),
-  createMailbox: (data: Record<string, unknown>, token: string) => api.post('/mail/mailboxes', data, token),
-  syncMailbox: (id: string, token: string) => api.post(`/mail/mailboxes/${id}/sync`, {}, token),
-  listMessages: (token: string, params?: { mailboxId?: string; threadId?: string }) => {
-    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-    return api.get<{ data: MailMessage[]; total: number }>(`/mail/messages${q}`, token);
-  },
-  getMessage: (id: string, token: string) => api.get<MailMessage>(`/mail/messages/${id}`, token),
-  send: (data: { mailboxId: string; to: string[]; subject: string; bodyHtml: string; inReplyTo?: string; threadId?: string }, token: string) =>
-    api.post('/mail/send', data, token),
-};
-
 export const serviceApi = {
   dashboard: (token: string) => api.get('/service/dashboard', token),
   listSla: (token: string) => api.get<SlaPolicy[]>('/service/sla', token),
@@ -2945,6 +3114,13 @@ export const portalApi = {
     api.post(`/customer/requests/${id}/reject`, { reason, note }, token),
   addPortalComment: (id: string, body: string, token: string) =>
     api.post<{ comment: PortalComment }>(`/customer/requests/${id}/comments`, { body }, token),
+
+  listTickets: (token: string) =>
+    api.get<{ tickets: LinkedServiceTicket[] }>('/customer/tickets', token),
+  getTicket: (id: string, token: string) =>
+    api.get<{ ticket: LinkedServiceTicket & { description?: string } }>(`/customer/tickets/${id}`, token),
+  addTicketComment: (id: string, body: string, token: string) =>
+    api.post<{ ticket: LinkedServiceTicket }>(`/customer/tickets/${id}/comments`, { body }, token),
 
   // Team
   listMembers: (token: string) =>
@@ -3008,8 +3184,8 @@ export const adminCustomerApi = {
   },
   getRequest: (id: string, token: string) =>
     api.get<{ request: CustomerRequest }>(`/customer/requests/tf/${id}`, token),
-  approveRequest: (id: string, note: string | undefined, token: string) =>
-    api.post(`/customer/requests/${id}/tf-approve`, { note }, token),
+  approveRequest: (id: string, note: string | undefined, token: string, workClassification?: 'billable_change' | 'fix') =>
+    api.post(`/customer/requests/${id}/tf-approve`, { note, workClassification }, token),
   rejectRequest: (id: string, reason: string, note: string | undefined, token: string) =>
     api.post(`/customer/requests/${id}/tf-reject`, { reason, note }, token),
 };

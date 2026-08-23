@@ -1,4 +1,5 @@
 import { Currency } from './models/currency.model';
+import { Country } from './models/country.model';
 import { CoreCompanySettings } from './models/coreCompanySettings.model';
 import { CurrencyExchangeRate } from './models/currencyExchangeRate.model';
 import {
@@ -156,6 +157,12 @@ export async function setCurrencyActive(code: string, isActive: boolean) {
   ).lean();
   if (!updated) throw new ApiError(404, 'Currency not found');
   return updated;
+}
+
+export async function listCountries(opts?: { activeOnly?: boolean }) {
+  const filter: Record<string, unknown> = {};
+  if (opts?.activeOnly) filter.isActive = true;
+  return Country.find(filter).sort({ name: 1 }).lean();
 }
 
 export async function listLatestExchangeRates(workspaceId: string | null | undefined) {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { accountsApi } from '../../lib/api';
 import type { AccountExpense, BillingInvoice } from '../../lib/api';
@@ -85,8 +86,18 @@ export function AccountsInvoices() {
           <tbody>
             {rows.map((i) => (
               <tr key={i._id} className="border-t border-[color:var(--border-subtle)]">
-                <td className="px-4 py-2.5 font-medium">{i.number}</td>
-                <td className="px-4 py-2.5">{nameOf(i.accountId, '—')}</td>
+                <td className="px-4 py-2.5 font-medium">
+                  <Link to="/billing/invoices" className="text-[color:var(--accent)] hover:underline">{i.number}</Link>
+                </td>
+                <td className="px-4 py-2.5">
+                  {typeof i.accountId === 'object' && i.accountId._id ? (
+                    <Link to={`/crm/accounts/${i.accountId._id}`} className="text-[color:var(--accent)] hover:underline">
+                      {nameOf(i.accountId, '—')}
+                    </Link>
+                  ) : (
+                    nameOf(i.accountId, '—')
+                  )}
+                </td>
                 <td className="px-4 py-2.5"><StatusPill label={i.status} tone={statusTone[i.status]} /></td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{money(i.total, i.currency)}</td>
                 <td className="px-4 py-2.5">{i.postedToAccounts ? <StatusPill label="posted" tone="green" /> : <span className="text-[11px] text-[color:var(--text-muted)]">not posted</span>}</td>
@@ -147,7 +158,21 @@ export function AccountsExpenses() {
           <tbody>
             {rows.map((x) => (
               <tr key={x._id} className="border-t border-[color:var(--border-subtle)]">
-                <td className="px-4 py-2.5"><p className="font-medium">{x.description}</p><p className="text-[11px] text-[color:var(--text-muted)]">{x.reference}</p></td>
+                <td className="px-4 py-2.5">
+                  <p className="font-medium">{x.description}</p>
+                  <p className="text-[11px] text-[color:var(--text-muted)]">{x.reference}</p>
+                  {typeof x.vendorAccountId === 'object' && x.vendorAccountId._id && (
+                    <Link to={`/crm/accounts/${x.vendorAccountId._id}`} className="text-[11px] text-[color:var(--accent)] hover:underline">
+                      {x.vendorAccountId.name}
+                    </Link>
+                  )}
+                  {typeof x.purchaseOrderId === 'object' && x.purchaseOrderId._id && (
+                    <p className="text-[11px]"><Link to="/procurement/pos" className="text-[color:var(--accent)] hover:underline">{x.purchaseOrderId.poNumber ?? 'PO'}</Link></p>
+                  )}
+                  {typeof x.projectId === 'object' && x.projectId._id && (
+                    <p className="text-[11px]"><Link to={`/projects/${x.projectId._id}/dashboard`} className="text-[color:var(--accent)] hover:underline">{x.projectId.key ?? 'Project'}</Link></p>
+                  )}
+                </td>
                 <td className="px-4 py-2.5 capitalize">{x.category.replace('_', ' ')}</td>
                 <td className="px-4 py-2.5 text-[color:var(--text-muted)]">{new Date(x.expenseDate).toLocaleDateString()}</td>
                 <td className="px-4 py-2.5"><StatusPill label={x.status} tone={statusTone[x.status]} /></td>

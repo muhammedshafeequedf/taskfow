@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { portalApi, type CustomerRequest } from '../../lib/api';
+import { portalApi, type CustomerRequest, type ProjectMapping } from '../../lib/api';
 import { userHasPermission } from '../../utils/permissions';
 import { CUSTOMER_PERMISSIONS } from '@shared/constants/permissions';
 import { FiPlus, FiFilter, FiEye } from 'react-icons/fi';
@@ -77,14 +77,24 @@ export default function RequestList() {
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
+  const [projects, setProjects] = useState<ProjectMapping[]>([]);
 
   const canApprove = userHasPermission(user?.customerPermissions ?? [], CUSTOMER_PERMISSIONS.LEGACY.REQUEST.APPROVE);
 
   useEffect(() => {
     if (!token) return;
+    portalApi.listProjects(token).then((res) => {
+      if (res.success && res.data) setProjects(res.data.mappings || []);
+    });
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
     setLoading(true);
-    const params: { status?: string } = {};
+    const params: { status?: string; projectId?: string } = {};
     if (statusFilter) params.status = statusFilter;
+    if (projectFilter) params.projectId = projectFilter;
     portalApi.listRequests(token, params).then((res) => {
       setLoading(false);
       if (res.success && res.data) {
@@ -93,7 +103,7 @@ export default function RequestList() {
         setError((res as { message?: string }).message ?? 'Failed to load requests');
       }
     });
-  }, [token, statusFilter]);
+  }, [token, statusFilter, projectFilter]);
 
   const filtered = typeFilter
     ? requests.filter((r) => r.type === typeFilter)
@@ -105,14 +115,14 @@ export default function RequestList() {
     'rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/30';
 
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-4 md:p-8 animate-fade-in">
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">My Requests</h1>
-          <p className="text-sm text-[color:var(--text-muted)] mt-1">All submitted requests from your organisation</p>
+          <h1 className="text-xl font-semibold text-[color:var(--text-primary)]">Issues</h1>
+          <p className="text-sm text-[color:var(--text-muted)] mt-1">Project work filed by your organisation</p>
         </div>
-        <Link to="/portal/requests/new" className="btn-primary flex items-center gap-2">
-          <FiPlus /> New Request
+        <Link to="/portal/requests/new" className="btn-primary flex items-center gap-2 min-h-11">
+          <FiPlus /> New issue
         </Link>
       </div>
 
@@ -145,22 +155,28 @@ export default function RequestList() {
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      <div className="flex items-center gap-3 mb-4 flex-wrap w-full">
         <FiFilter className="text-[color:var(--text-muted)]" />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputClass}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${inputClass} w-full md:w-auto min-h-11`}>
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={inputClass}>
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className={`${inputClass} w-full md:w-auto min-h-11`}>
           {TYPE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-        {(statusFilter || typeFilter) && (
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className={`${inputClass} w-full md:w-auto min-h-11`}>
+          <option value="">All projects</option>
+          {projects.map((m) => (
+            <option key={m.projectId._id} value={m.projectId._id}>{m.projectId.name}</option>
+          ))}
+        </select>
+        {(statusFilter || typeFilter || projectFilter) && (
           <button
             type="button"
-            onClick={() => { setStatusFilter(''); setTypeFilter(''); }}
+            onClick={() => { setStatusFilter(''); setTypeFilter(''); setProjectFilter(''); }}
             className="text-xs text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition"
           >
             Clear filters
@@ -178,13 +194,33 @@ export default function RequestList() {
         <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
           {filtered.length === 0 ? (
             <div className="p-12 text-center text-sm text-[color:var(--text-muted)]">
-              No requests found.{' '}
+              No issues found.{' '}
               <Link to="/portal/requests/new" className="text-[color:var(--accent)] hover:underline">
                 Submit one now
               </Link>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="md:hidden divide-y divide-[color:var(--border-subtle)]">
+              {filtered.map((req) => {
+                const project = typeof req.projectId === 'object' ? req.projectId.name : req.projectId;
+                return (
+                  <button
+                    key={req._id}
+                    type="button"
+                    onClick={() => navigate(`/portal/requests/${req._id}`)}
+                    className="w-full text-left p-4 min-h-11"
+                  >
+                    <p className="font-medium text-[color:var(--text-primary)]">{req.title}</p>
+                    <p className="text-xs text-[color:var(--text-muted)] mt-1">{project} · {req.type} · {req.priority}</p>
+                    <span className={`mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor(req.status)}`}>
+                      {statusLabel(req.status)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="overflow-x-auto hidden md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)]">
@@ -232,6 +268,7 @@ export default function RequestList() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       )}

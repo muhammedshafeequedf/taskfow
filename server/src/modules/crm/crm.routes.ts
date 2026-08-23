@@ -21,6 +21,11 @@ router.patch('/accounts/:id', requirePermission(P.ACCOUNT.UPDATE), asyncHandler(
 router.delete('/accounts/:id', requirePermission(P.ACCOUNT.DELETE), asyncHandler(crm.deleteAccount));
 router.post('/accounts/:id/link-project', requirePermission(P.ACCOUNT.UPDATE), asyncHandler(crm.linkProject));
 
+router.get(
+  '/customer-orgs',
+  requireAnyPermission([P.LEAD.LIST, P.DEAL.LIST, P.CONTACT.LIST, P.QUOTE.LIST, P.CONTRACT.LIST]),
+  asyncHandler(crm.listCustomerOrgs)
+);
 router.get('/contacts', requirePermission(P.CONTACT.LIST), asyncHandler(crm.listContacts));
 router.post('/contacts', requirePermission(P.CONTACT.CREATE), asyncHandler(crm.createContact));
 router.patch('/contacts/:id', requirePermission(P.CONTACT.UPDATE), asyncHandler(crm.updateContact));
@@ -28,12 +33,16 @@ router.delete('/contacts/:id', requirePermission(P.CONTACT.DELETE), asyncHandler
 
 router.get('/activities', requirePermission(P.ACTIVITY.LIST), asyncHandler(crm.listActivities));
 router.post('/activities', requirePermission(P.ACTIVITY.CREATE), asyncHandler(crm.createActivity));
+router.patch('/activities/:id', requirePermission(P.ACTIVITY.UPDATE), asyncHandler(crm.updateActivity));
 router.post('/activities/:id/complete', requirePermission(P.ACTIVITY.UPDATE), asyncHandler(crm.completeActivity));
 router.delete('/activities/:id', requirePermission(P.ACTIVITY.DELETE), asyncHandler(crm.deleteActivity));
 
 router.get('/leads', requirePermission(P.LEAD.LIST), asyncHandler(crm.listLeads));
+router.get('/leads/stats', requirePermission(P.LEAD.LIST), asyncHandler(crm.getLeadStats));
 router.post('/leads', requirePermission(P.LEAD.CREATE), asyncHandler(crm.createLead));
+router.get('/leads/:id', requireAnyPermission([P.LEAD.READ, P.LEAD.LIST]), asyncHandler(crm.getLead));
 router.patch('/leads/:id', requirePermission(P.LEAD.UPDATE), asyncHandler(crm.updateLead));
+router.delete('/leads/:id', requirePermission(P.LEAD.DELETE), asyncHandler(crm.deleteLead));
 router.post('/leads/:id/convert', requirePermission(P.LEAD.UPDATE), asyncHandler(crm.convertLead));
 
 router.get('/deals/forecast', requirePermission(P.REPORT.READ), asyncHandler(crm.getForecast));
@@ -64,6 +73,12 @@ router.get(
   requirePermission(P.CONTRACT.LIST),
   asyncHandler(crm.getContractsHubDashboard)
 );
+
+router.get('/campaigns', requirePermission(P.CAMPAIGN.LIST), asyncHandler(crm.listCampaigns));
+router.post('/campaigns', requirePermission(P.CAMPAIGN.CREATE), asyncHandler(crm.createCampaign));
+router.get('/campaigns/:id', requireAnyPermission([P.CAMPAIGN.READ, P.CAMPAIGN.LIST]), asyncHandler(crm.getCampaign));
+router.patch('/campaigns/:id', requirePermission(P.CAMPAIGN.UPDATE), asyncHandler(crm.updateCampaign));
+router.delete('/campaigns/:id', requirePermission(P.CAMPAIGN.DELETE), asyncHandler(crm.deleteCampaign));
 
 router.get('/webhooks', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.listWebhooks));
 router.post('/webhooks', requirePermission(P.SETTINGS.MANAGE), asyncHandler(crm.createWebhook));

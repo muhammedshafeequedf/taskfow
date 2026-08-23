@@ -7,7 +7,6 @@ type HubVisualId =
   | 'pm'
   | 'auth'
   | 'crm'
-  | 'mail'
   | 'service'
   | 'portal-admin'
   | 'inbox'
@@ -30,8 +29,6 @@ export function HubModuleVisual({ id }: { id: string }) {
       return <AuthShieldVisual />;
     case 'crm':
       return <CrmPipelineVisual />;
-    case 'mail':
-      return <MailFlyVisual />;
     case 'service':
       return <ServiceTicketVisual />;
     case 'portal-admin':
@@ -176,26 +173,6 @@ function CrmPipelineVisual() {
         <text x="22" y="22" className="fill-violet-200/70" fontSize="8" fontFamily="system-ui">
           Pipeline
         </text>
-      </svg>
-    </Frame>
-  );
-}
-
-function MailFlyVisual() {
-  return (
-    <Frame label="mail">
-      <svg viewBox="0 0 160 100" className="h-[85%] w-[90%]" fill="none">
-        <rect x="36" y="30" width="72" height="48" rx="6" className="fill-cyan-500/15 stroke-cyan-400/50" strokeWidth="1.5" />
-        <path d="M36 38l36 22 36-22" className="stroke-cyan-300/80 hub-anim-pulse" strokeWidth="1.5" strokeLinejoin="round" />
-        {/* Flying envelope */}
-        <g className="hub-anim-mail-fly">
-          <rect x="0" y="0" width="22" height="14" rx="2" className="fill-teal-300/80" />
-          <path d="M0 2l11 8L22 2" className="stroke-teal-900/40" strokeWidth="1" />
-        </g>
-        {/* Inbox tray bounce */}
-        <path d="M48 78h48l-6 10H54l-6-10z" className="fill-cyan-400/40 hub-anim-float" />
-        <circle cx="126" cy="28" r="3" className="fill-cyan-300/70 hub-anim-blink" />
-        <circle cx="136" cy="38" r="2" className="fill-teal-200/50 hub-anim-blink" style={{ animationDelay: '0.4s' }} />
       </svg>
     </Frame>
   );

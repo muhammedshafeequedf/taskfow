@@ -4,6 +4,7 @@ import { CustomerUser } from './customerUser.model';
 import { CustomerRole } from '../customer-role/customerRole.model';
 import { CustomerOrg } from '../customer-org/customerOrg.model';
 import { ApiError } from '../../../utils/ApiError';
+import { upsertContactByEmail } from '../../crm/contacts/contacts.service';
 import { env } from '../../../config/env';
 import {
   sendCustomerEmail,
@@ -68,6 +69,17 @@ export async function inviteMember(
       env.appUrl
     )
   ).catch((err) => console.error('Failed to send member invite email:', err));
+
+  const orgFull = await CustomerOrg.findById(orgId).select('taskflowOrganizationId').lean();
+  if (orgFull?.taskflowOrganizationId) {
+    await upsertContactByEmail(String(orgFull.taskflowOrganizationId), {
+      email: input.email,
+      name: input.name,
+      origin: 'portal',
+      customerOrgId: orgId,
+      customerUserId: String(user._id),
+    }).catch((err) => console.error('Failed to upsert contact from portal invite:', err));
+  }
 
   const populated = await CustomerUser.findById(user._id)
     .populate('roleId', 'name permissions isSystemRole')

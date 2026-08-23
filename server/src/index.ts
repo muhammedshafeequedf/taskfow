@@ -4,7 +4,6 @@ import { connectDb } from "./config/db";
 import { env, validateRuntimeConfig } from "./config/env";
 import { initWebSocket } from "./websocket";
 import { startAdoAutoSyncScheduler } from "./modules/integrations/ado/adoAutoSync.scheduler";
-import { startMailSyncScheduler } from "./modules/mail/mail.scheduler";
 
 async function startServer() {
   try {
@@ -15,7 +14,6 @@ async function startServer() {
 
     initWebSocket(server);
     startAdoAutoSyncScheduler();
-    startMailSyncScheduler();
 
     server.listen(env.port, () => {
       console.log(`Server running on port ${env.port}`);

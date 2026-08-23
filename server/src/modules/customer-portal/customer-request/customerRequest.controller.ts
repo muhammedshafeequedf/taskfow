@@ -88,12 +88,13 @@ async function listAllRequestsTfHandler(req: Request & { user?: AuthPayload; act
 
 // TF Admin: Approve a request and create issue
 async function tfApproveHandler(req: Request & { user?: AuthPayload; activeOrganizationId?: string }, res: Response): Promise<void> {
-  const { note } = req.body;
+  const { note, workClassification } = req.body;
   const result = await customerRequestService.tfApprove(
     req.params.requestId,
     req.user!.id,
     note,
-    req.activeOrganizationId
+    req.activeOrganizationId,
+    workClassification
   );
   res.status(200).json({ success: true, data: { request: result } });
 }

@@ -25,6 +25,7 @@ router.get('/company', requireAnyPermission(companyRead), asyncHandler(ctrl.getC
 router.patch('/company', requireAnyPermission(companyUpdate), asyncHandler(ctrl.updateCompany));
 
 router.get('/currencies', requireAnyPermission(currencyRead), asyncHandler(ctrl.listCurrencies));
+router.get('/countries', requireAnyPermission(currencyRead), asyncHandler(ctrl.listCountries));
 router.patch(
   '/currencies/:code',
   requireAnyPermission(currencyManage),

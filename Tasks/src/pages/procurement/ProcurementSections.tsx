@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { procurementApi } from '../../lib/api';
 import type { PurchaseOrder, CrmAccount } from '../../lib/api';
@@ -92,7 +93,29 @@ function PoList({ title, subtitle, fixedCategory }: { title: string; subtitle: s
               {rows.map((p) => (
                 <tr key={p._id} className="border-t border-[color:var(--border-subtle)] hover:bg-[color:var(--bg-page)]">
                   <td className="px-4 py-2.5"><p className="font-medium">{p.title}</p><p className="text-[11px] text-[color:var(--text-muted)]">{p.poNumber} · {p.category}</p></td>
-                  <td className="px-4 py-2.5">{nameOf(p.vendorAccountId, '—')}</td>
+                  <td className="px-4 py-2.5">
+                    {typeof p.vendorAccountId === 'object' && p.vendorAccountId._id ? (
+                      <Link to={`/crm/accounts/${p.vendorAccountId._id}`} className="text-[color:var(--accent)] hover:underline">
+                        {nameOf(p.vendorAccountId, '—')}
+                      </Link>
+                    ) : (
+                      nameOf(p.vendorAccountId, '—')
+                    )}
+                    {typeof p.projectId === 'object' && p.projectId._id && (
+                      <p className="text-[11px]">
+                        <Link to={`/projects/${p.projectId._id}/dashboard`} className="text-[color:var(--accent)] hover:underline">
+                          {p.projectId.key ?? 'Project'}
+                        </Link>
+                      </p>
+                    )}
+                    {typeof p.contractId === 'object' && p.contractId._id && (
+                      <p className="text-[11px]">
+                        <Link to="/contracts" className="text-[color:var(--accent)] hover:underline">
+                          {p.contractId.title ?? 'Contract'}
+                        </Link>
+                      </p>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5"><StatusPill label={p.status} tone={poStatusTone[p.status]} /></td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{money(p.total, p.currency)}</td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">

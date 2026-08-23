@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PlatformModulesProvider } from './contexts/PlatformModulesContext';
 import { usePushRegistration } from './hooks/usePushRegistration';
@@ -11,7 +11,6 @@ import {
   PmModuleLayout,
   AuthModuleLayout,
   CrmModuleLayout,
-  MailModuleLayout,
   ServiceModuleLayout,
   PortalAdminModuleLayout,
   InboxModuleLayout,
@@ -86,6 +85,8 @@ import RequestDetail from './pages/portal/RequestDetail';
 import PortalTeam from './pages/portal/PortalTeam';
 import PortalRoles from './pages/portal/PortalRoles';
 import PortalProjects from './pages/portal/PortalProjects';
+import PortalTickets from './pages/portal/PortalTickets';
+import PortalTicketDetail from './pages/portal/PortalTicketDetail';
 import PortalApprovalQueue from './pages/portal/PortalApprovalQueue';
 import PortalProfile from './pages/portal/PortalProfile';
 // Admin customer pages
@@ -95,20 +96,21 @@ import CustomerRequestApprovals from './pages/admin/CustomerRequestApprovals';
 import StandaloneAppSettings from './pages/StandaloneAppSettings';
 import KnowledgeBase from './pages/service/KnowledgeBase';
 import CrmDashboard from './pages/crm/CrmDashboard';
-import CrmAccounts from './pages/crm/CrmAccounts';
-import CrmAccountDetail from './pages/crm/CrmAccountDetail';
 import CrmContacts from './pages/crm/CrmContacts';
 import CrmDeals from './pages/crm/CrmDeals';
 import CrmLeads from './pages/crm/CrmLeads';
+import CrmLeadForm from './pages/crm/CrmLeadForm';
+import CrmLeadDetail from './pages/crm/CrmLeadDetail';
 import CrmQuotes from './pages/crm/CrmQuotes';
 import CrmQuoteDetail from './pages/crm/CrmQuoteDetail';
 import CrmQuoteForm from './pages/crm/CrmQuoteForm';
 import CrmActivities from './pages/crm/CrmActivities';
+import CrmCampaigns from './pages/crm/CrmCampaigns';
+import CrmCampaignDetail from './pages/crm/CrmCampaignDetail';
+import CrmFollowUps from './pages/crm/CrmFollowUps';
 import CrmContracts from './pages/crm/CrmContracts';
 import CrmSettings from './pages/crm/CrmSettings';
 
-import MailInbox from './pages/mail/MailInbox';
-import MailCompose from './pages/mail/MailCompose';
 import ServiceDesk from './pages/service/ServiceDesk';
 import ServiceDashboard from './pages/service/ServiceDashboard';
 import ServiceSla from './pages/service/ServiceSla';
@@ -176,6 +178,12 @@ import {
   CalendarStandups,
 } from './pages/calendar/CalendarSections';
 
+function PortalResetPasswordRedirect() {
+  const [params] = useSearchParams();
+  const q = params.toString();
+  return <Navigate to={q ? `/reset-password?${q}` : '/reset-password'} replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -192,6 +200,8 @@ function AppRoutes() {
       <Route path="/auth/ide" element={<IdeLogin />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/portal/login" element={<Navigate to="/login" replace />} />
+      <Route path="/portal/reset-password" element={<PortalResetPasswordRedirect />} />
       <Route path="/register" element={<Register />} />
 
       {/* Customer Portal routes */}
@@ -204,6 +214,8 @@ function AppRoutes() {
         <Route path="/portal/team" element={<PortalTeam />} />
         <Route path="/portal/roles" element={<PortalRoles />} />
         <Route path="/portal/projects" element={<PortalProjects />} />
+        <Route path="/portal/tickets" element={<PortalTickets />} />
+        <Route path="/portal/tickets/:id" element={<PortalTicketDetail />} />
         <Route path="/portal/approval-queue" element={<PortalApprovalQueue />} />
       </Route>
 
@@ -269,24 +281,24 @@ function AppRoutes() {
         {/* CRM module */}
         <Route element={<CrmModuleLayout />}>
         <Route path="/crm" element={<CrmDashboard />} />
-        <Route path="/crm/accounts" element={<CrmAccounts />} />
-        <Route path="/crm/accounts/:id" element={<CrmAccountDetail />} />
+        <Route path="/crm/accounts" element={<Navigate to="/admin/customer-orgs" replace />} />
+        <Route path="/crm/accounts/:id" element={<Navigate to="/admin/customer-orgs" replace />} />
         <Route path="/crm/contacts" element={<CrmContacts />} />
         <Route path="/crm/deals" element={<CrmDeals />} />
         <Route path="/crm/leads" element={<CrmLeads />} />
+        <Route path="/crm/leads/new" element={<CrmLeadForm />} />
+        <Route path="/crm/leads/:id/edit" element={<CrmLeadForm />} />
+        <Route path="/crm/leads/:id" element={<CrmLeadDetail />} />
         <Route path="/crm/quotes" element={<CrmQuotes />} />
         <Route path="/crm/quotes/new" element={<CrmQuoteForm />} />
         <Route path="/crm/quotes/:id/edit" element={<CrmQuoteForm />} />
         <Route path="/crm/quotes/:id" element={<CrmQuoteDetail />} />
         <Route path="/crm/activities" element={<CrmActivities />} />
+        <Route path="/crm/follow-ups" element={<CrmFollowUps />} />
+        <Route path="/crm/campaigns" element={<CrmCampaigns />} />
+        <Route path="/crm/campaigns/:id" element={<CrmCampaignDetail />} />
         <Route path="/crm/contracts" element={<CrmContracts />} />
         <Route path="/crm/settings" element={<CrmSettings />} />
-        </Route>
-
-        {/* Mail module */}
-        <Route element={<MailModuleLayout />}>
-        <Route path="/mail" element={<MailInbox />} />
-        <Route path="/mail/compose" element={<MailCompose />} />
         </Route>
 
         {/* Service desk module */}

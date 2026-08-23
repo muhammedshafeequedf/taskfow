@@ -15,6 +15,7 @@ import { env } from '../../../config/env';
 import {
   sendCustomerEmail,
   renderTicketCreatedEmail,
+  renderStaffTicketCreatedEmail,
   renderTfRejectedEmail,
   renderCustomerRequestRejectedEmail,
   renderCustomerRequestApprovedByOrgAdminEmail,
@@ -28,7 +29,13 @@ import {
   formatRequestTypeLabel,
   formatPriorityLabel,
 } from './customerRequestInbox';
-import { User } from '../../auth/user.model';
+import { User, UserType } from '../../auth/user.model';
+import { Role } from '../../roles/role.model';
+import { OrganizationMember } from '../../organizations/organizationMember.model';
+import { resolveEffectiveGlobalPermissions } from '../../auth/effectivePermissions';
+import { createTicketFromCustomerRequest } from '../../service-desk/tickets.service';
+import { ServiceTicket } from '../../service-desk/models/serviceTicket.model';
+import { TASK_FLOW_PERMISSIONS } from '../../../shared/constants/permissions';
 
 async function customerOrgIdsInTaskflowWorkspace(
   taskflowOrganizationId: string | null | undefined
@@ -260,7 +267,36 @@ export async function getRequest(
     };
   }
 
-  return { ...request, linkedIssue, ticketDetails };
+  const reqAny = request as { linkedServiceTicketId?: unknown; _id: unknown };
+  const ticketFilter = reqAny.linkedServiceTicketId
+    ? { _id: reqAny.linkedServiceTicketId }
+    : { customerRequestId: reqAny._id };
+  const sdTicket = await ServiceTicket.findOne(ticketFilter)
+    .select('subject status priority workClassification comments')
+    .lean();
+  let linkedTicket: unknown = null;
+  if (sdTicket) {
+    const comments = (
+      (sdTicket as { comments?: Array<{ internal?: boolean; body: string; authorName?: string; createdAt: Date }> })
+        .comments ?? []
+    )
+      .filter((c) => !c.internal)
+      .map((c) => ({
+        body: c.body,
+        authorName: c.authorName,
+        createdAt: c.createdAt,
+      }));
+    linkedTicket = {
+      _id: sdTicket._id,
+      subject: (sdTicket as { subject: string }).subject,
+      status: (sdTicket as { status: string }).status,
+      priority: (sdTicket as { priority: string }).priority,
+      workClassification: (sdTicket as { workClassification?: string }).workClassification,
+      comments,
+    };
+  }
+
+  return { ...request, linkedIssue, ticketDetails, linkedTicket };
 }
 
 export async function addPortalComment(
@@ -476,19 +512,138 @@ export async function customerAdminReject(
   return updated;
 }
 
+function workClassificationLabel(v: 'billable_change' | 'fix'): string {
+  return v === 'billable_change' ? 'Billable change' : 'Fix';
+}
+
+async function sendTicketCreatedAudienceEmails(params: {
+  customerOrgId: string;
+  taskflowOrganizationId: string;
+  requesterId: unknown;
+  requestTitle: string;
+  issueKey: string;
+  requestId: string;
+  projectLabel: string;
+  type: string;
+  priority: string;
+  workClassification: 'billable_change' | 'fix';
+  projectId: string;
+  issueId: string;
+  ticketId?: string;
+  ticketPending: boolean;
+}): Promise<void> {
+  const classLabel = workClassificationLabel(params.workClassification);
+  const titleShort =
+    params.requestTitle.length > 40 ? `${params.requestTitle.slice(0, 37)}…` : params.requestTitle;
+  const subject = `Ticket created: ${params.issueKey} — ${titleShort}`;
+
+  const [requester, org, orgAdmins] = await Promise.all([
+    CustomerUser.findById(params.requesterId).select('name email').lean(),
+    CustomerOrg.findById(params.customerOrgId).select('name').lean(),
+    CustomerUser.find({
+      customerOrgId: params.customerOrgId,
+      isOrgAdmin: true,
+      status: 'active',
+    })
+      .select('name email')
+      .lean(),
+  ]);
+
+  const customerEmails = new Map<string, string>();
+  if (requester?.email) customerEmails.set(requester.email.toLowerCase(), requester.name ?? '');
+  for (const admin of orgAdmins) {
+    if (admin.email) customerEmails.set(admin.email.toLowerCase(), admin.name ?? 'Admin');
+  }
+
+  const sent = new Set<string>();
+  for (const [email, name] of customerEmails) {
+    sent.add(email);
+    sendCustomerEmail(
+      email,
+      subject,
+      renderTicketCreatedEmail({
+        recipientName: name || 'there',
+        requestTitle: params.requestTitle,
+        issueKey: params.issueKey,
+        orgName: org?.name ?? '',
+        appUrl: env.appUrl,
+        requestId: params.requestId,
+        projectLabel: params.projectLabel,
+        typeLabel: formatRequestTypeLabel(params.type),
+        priorityLabel: formatPriorityLabel(params.priority),
+        workClassificationLabel: classLabel,
+        ticketPending: params.ticketPending,
+      })
+    ).catch((err) => console.error('Failed to send ticket created email:', err));
+  }
+
+  const memberIds = await OrganizationMember.find({
+    organization: params.taskflowOrganizationId,
+    status: 'active',
+  }).distinct('user');
+
+  const staffUsers = await User.find({
+    _id: { $in: memberIds },
+    enabled: true,
+    userType: UserType.TASKFLOW,
+  })
+    .select('name email role roleId permissionOverrides mustChangePassword')
+    .lean();
+
+  const roleIds = staffUsers.map((u) => u.roleId).filter(Boolean);
+  const roles = await Role.find({ _id: { $in: roleIds } }).select('permissions').lean();
+  const rolePerms = new Map(roles.map((r) => [String(r._id), r.permissions ?? []]));
+
+  const sdList = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE.TICKET.LIST;
+  const sdRead = TASK_FLOW_PERMISSIONS.TASKFLOW.SERVICE.TICKET.READ;
+
+  for (const staff of staffUsers) {
+    const email = staff.email?.toLowerCase();
+    if (!email || sent.has(email)) continue;
+    const perms = resolveEffectiveGlobalPermissions({
+      rolePermissions: staff.roleId ? rolePerms.get(String(staff.roleId)) ?? [] : [],
+      role: staff.role,
+      mustChangePassword: staff.mustChangePassword,
+      permissionOverrides: staff.permissionOverrides,
+    });
+    if (!perms.includes(sdList) && !perms.includes(sdRead)) continue;
+    sent.add(email);
+    sendCustomerEmail(
+      email,
+      subject,
+      renderStaffTicketCreatedEmail({
+        recipientName: staff.name ?? 'there',
+        requestTitle: params.requestTitle,
+        issueKey: params.issueKey,
+        orgName: org?.name ?? '',
+        appUrl: env.appUrl,
+        projectId: params.projectId,
+        issueId: params.issueId,
+        ticketId: params.ticketId,
+        projectLabel: params.projectLabel,
+        typeLabel: formatRequestTypeLabel(params.type),
+        priorityLabel: formatPriorityLabel(params.priority),
+        workClassificationLabel: classLabel,
+        ticketPending: params.ticketPending,
+      })
+    ).catch((err) => console.error('Failed to send staff ticket created email:', err));
+  }
+}
+
 export async function tfApprove(
   requestId: string,
   reviewedByTfUserId: string,
   note: string | undefined,
-  taskflowOrganizationId: string | null | undefined
+  taskflowOrganizationId: string | null | undefined,
+  workClassification: 'billable_change' | 'fix' | undefined
 ): Promise<unknown> {
+  if (workClassification !== 'billable_change' && workClassification !== 'fix') {
+    throw new ApiError(400, 'Work classification is required (Billable change or Fix)');
+  }
   await assertCustomerRequestInTaskflowWorkspace(requestId, taskflowOrganizationId);
+  if (!taskflowOrganizationId) throw new ApiError(400, 'Active workspace required');
 
-  const request = await CustomerRequest.findOne({
-    _id: requestId,
-    status: 'pending_taskflow_approval',
-  }).lean();
-
+  const request = await CustomerRequest.findById(requestId).lean();
   if (!request) throw new ApiError(404, 'Request not found or not pending TF approval');
 
   const r = request as {
@@ -500,9 +655,21 @@ export async function tfApprove(
     priority: string;
     customerOrgId: { toString(): string };
     createdBy: unknown;
+    status: string;
+    linkedIssueId?: unknown;
+    linkedIssueKey?: string;
+    linkedServiceTicketId?: unknown;
   };
 
-  // Auto-create issue in the linked project
+  if (r.linkedIssueId && r.linkedServiceTicketId && r.status === 'ticket_created') {
+    return request;
+  }
+
+  if (r.status !== 'pending_taskflow_approval' && !r.linkedIssueId) {
+    throw new ApiError(404, 'Request not found or not pending TF approval');
+  }
+
+  const classLabel = workClassificationLabel(workClassification);
   const typeMap: Record<string, string> = {
     bug: 'Bug',
     feature: 'Feature',
@@ -517,53 +684,90 @@ export async function tfApprove(
     critical: 'Critical',
   };
 
-  const project = await Project.findByIdAndUpdate(
-    r.projectId,
-    { $inc: { nextIssueNumber: 1 } },
-    { new: true }
-  )
-    .select('name key nextIssueNumber statuses issueTypes priorities')
-    .lean();
+  let issueId = r.linkedIssueId ? String(r.linkedIssueId) : '';
+  let issueKey = r.linkedIssueKey ?? '';
+  let projectLabel = '';
 
-  if (!project) throw new ApiError(404, 'Project not found');
+  if (!r.linkedIssueId) {
+    const project = await Project.findByIdAndUpdate(
+      r.projectId,
+      { $inc: { nextIssueNumber: 1 } },
+      { new: true }
+    )
+      .select('name key nextIssueNumber statuses issueTypes priorities')
+      .lean();
 
-  const typeName = typeMap[r.type] ?? 'Task';
-  const priorityName = priorityMap[r.priority] ?? 'Medium';
+    if (!project) throw new ApiError(404, 'Project not found');
 
-  const projectAny = project as {
-    name: string;
-    key: string;
-    nextIssueNumber: number;
-    issueTypes?: Array<{ name?: string }>;
-    priorities?: Array<{ name?: string }>;
-    statuses?: Array<{ name?: string; isClosed?: boolean }>;
-  };
-  const projectLabel = `${projectAny.name} (${projectAny.key})`;
+    const typeName = typeMap[r.type] ?? 'Task';
+    const priorityName = priorityMap[r.priority] ?? 'Medium';
 
-  const issueType =
-    projectAny.issueTypes?.find((t) => t.name === typeName) ?? projectAny.issueTypes?.[0];
-  const priority =
-    projectAny.priorities?.find((p) => p.name === priorityName) ?? projectAny.priorities?.[0];
-  const status =
-    projectAny.statuses?.find((s) => !s.isClosed) ?? projectAny.statuses?.[0];
+    const projectAny = project as {
+      name: string;
+      key: string;
+      nextIssueNumber: number;
+      issueTypes?: Array<{ name?: string }>;
+      priorities?: Array<{ name?: string }>;
+      statuses?: Array<{ name?: string; isClosed?: boolean }>;
+    };
+    projectLabel = `${projectAny.name} (${projectAny.key})`;
 
-  const issueKey = `${projectAny.key}-${projectAny.nextIssueNumber}`;
+    const issueType =
+      projectAny.issueTypes?.find((t) => t.name === typeName) ?? projectAny.issueTypes?.[0];
+    const priority =
+      projectAny.priorities?.find((p) => p.name === priorityName) ?? projectAny.priorities?.[0];
+    const status =
+      projectAny.statuses?.find((s) => !s.isClosed) ?? projectAny.statuses?.[0];
 
-  const issue = await Issue.create({
-    title: r.title,
-    description: r.description,
-    type: issueType?.name ?? 'Task',
-    priority: priority?.name ?? 'Medium',
-    status: status?.name ?? 'To Do',
-    project: r.projectId,
-    reporter: reviewedByTfUserId,
-    key: issueKey,
-    boardColumn: status?.name ?? 'To Do',
-    customFieldValues: {
-      customerRequestId: r._id.toString(),
-      customerOrgId: r.customerOrgId.toString(),
-    },
-  });
+    issueKey = `${projectAny.key}-${projectAny.nextIssueNumber}`;
+    const descFooter = `\n\n---\nWork classification: ${classLabel}`;
+
+    const issue = await Issue.create({
+      title: r.title,
+      description: `${r.description}${descFooter}`,
+      type: issueType?.name ?? 'Task',
+      priority: priority?.name ?? 'Medium',
+      status: status?.name ?? 'To Do',
+      project: r.projectId,
+      reporter: reviewedByTfUserId,
+      key: issueKey,
+      boardColumn: status?.name ?? 'To Do',
+      customerRequestId: r._id,
+      customFieldValues: {
+        customerRequestId: r._id.toString(),
+        customerOrgId: r.customerOrgId.toString(),
+        workClassification,
+      },
+    });
+    issueId = String(issue._id);
+  } else {
+    const project = await Project.findById(r.projectId).select('name key').lean();
+    projectLabel = project
+      ? `${(project as { name: string; key: string }).name} (${(project as { name: string; key: string }).key})`
+      : '';
+    if (!issueKey) {
+      const existingIssue = await Issue.findById(r.linkedIssueId).select('key').lean();
+      issueKey = (existingIssue as { key?: string } | null)?.key ?? '';
+    }
+  }
+
+  let ticketId: string | undefined;
+  let ticketPending = false;
+  try {
+    const ticket = await createTicketFromCustomerRequest(
+      requestId,
+      taskflowOrganizationId,
+      reviewedByTfUserId,
+      { linkedIssueId: issueId, workClassification }
+    );
+    ticketId = String((ticket as { _id: unknown })._id);
+    await Issue.findByIdAndUpdate(issueId, {
+      $set: { linkedServiceTicketId: ticketId, customerRequestId: requestId },
+    });
+  } catch (err) {
+    console.error('createTicketFromCustomerRequest:', err);
+    ticketPending = true;
+  }
 
   const updated = await CustomerRequest.findByIdAndUpdate(
     requestId,
@@ -574,49 +778,34 @@ export async function tfApprove(
         'approvalFlow.taskflowStage.reviewedAt': new Date(),
         'approvalFlow.taskflowStage.note': note,
         status: 'ticket_created',
-        linkedIssueId: issue._id,
+        linkedIssueId: issueId,
         linkedIssueKey: issueKey,
+        workClassification,
+        ...(ticketId ? { linkedServiceTicketId: ticketId } : {}),
       },
     },
     { new: true }
   ).lean();
 
-  // Notify requester and org admin (email)
-  const [requester, org, orgAdmin, approver] = await Promise.all([
-    CustomerUser.findById(r.createdBy).select('name email').lean(),
-    CustomerOrg.findById(r.customerOrgId).select('name').lean(),
-    CustomerUser.findOne({
-      customerOrgId: r.customerOrgId,
-      isOrgAdmin: true,
-      status: 'active',
-    })
-      .select('name email')
-      .lean(),
-    User.findById(reviewedByTfUserId).select('name').lean(),
-  ]);
+  const org = await CustomerOrg.findById(r.customerOrgId).select('name').lean();
+  const approver = await User.findById(reviewedByTfUserId).select('name').lean();
 
-  const notifyUsers = new Set<string>();
-  if (requester) notifyUsers.add(requester.email);
-  if (orgAdmin && orgAdmin.email !== requester?.email) notifyUsers.add(orgAdmin.email);
-
-  for (const email of notifyUsers) {
-    const recipientName = email === requester?.email ? requester?.name : orgAdmin?.name ?? 'Admin';
-    sendCustomerEmail(
-      email,
-      `Ticket created: ${issueKey} — ${r.title.length > 40 ? `${r.title.slice(0, 37)}…` : r.title}`,
-      renderTicketCreatedEmail({
-        recipientName: recipientName ?? '',
-        requestTitle: r.title,
-        issueKey,
-        orgName: org?.name ?? '',
-        appUrl: env.appUrl,
-        requestId: r._id.toString(),
-        projectLabel,
-        typeLabel: formatRequestTypeLabel(r.type),
-        priorityLabel: formatPriorityLabel(r.priority),
-      })
-    ).catch((err) => console.error('Failed to send ticket created email:', err));
-  }
+  sendTicketCreatedAudienceEmails({
+    customerOrgId: r.customerOrgId.toString(),
+    taskflowOrganizationId,
+    requesterId: r.createdBy,
+    requestTitle: r.title,
+    issueKey,
+    requestId: r._id.toString(),
+    projectLabel,
+    type: r.type,
+    priority: r.priority,
+    workClassification,
+    projectId: String(r.projectId),
+    issueId,
+    ticketId,
+    ticketPending,
+  }).catch((err) => console.error('sendTicketCreatedAudienceEmails:', err));
 
   notifyProjectMembersTicketFromCustomerRequest({
     projectId: String(r.projectId),

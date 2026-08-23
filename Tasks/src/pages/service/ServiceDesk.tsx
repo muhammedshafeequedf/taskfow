@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { serviceApi, type ServiceTicket } from '../../lib/api';
+import { serviceApi, usersApi, type ServiceTicket, type User } from '../../lib/api';
 import { StatusPill } from '../../components/moduleKit';
 
 const PRIORITY_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate'> = {
@@ -10,8 +11,22 @@ const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'slate' |
   open: 'blue', pending: 'amber', in_progress: 'violet', resolved: 'green', closed: 'slate',
 };
 
+const QUEUES = ['portal', 'general', 'billing', 'dev', 'email'] as const;
+
 function assigneeName(a: ServiceTicket['assigneeId']): string | undefined {
   return a && typeof a === 'object' ? a.name : undefined;
+}
+
+function assigneeIdOf(a: ServiceTicket['assigneeId']): string {
+  if (!a) return '';
+  return typeof a === 'object' ? a._id : a;
+}
+
+function issueLabel(ticket: ServiceTicket): string | undefined {
+  const li = ticket.linkedIssueId;
+  if (!li) return undefined;
+  if (typeof li === 'object') return li.key || li.title || li._id;
+  return li;
 }
 
 export default function ServiceDesk() {
@@ -21,16 +36,26 @@ export default function ServiceDesk() {
   const [queue, setQueue] = useState('general');
   const [priority, setPriority] = useState('medium');
   const [statusFilter, setStatusFilter] = useState('');
+  const [queueFilter, setQueueFilter] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const q = searchParams.get('ticket');
+    if (q) setSelectedId(q);
+  }, [searchParams]);
 
   const load = () => {
     if (!token) return;
-    serviceApi.listTickets(token, statusFilter ? { status: statusFilter } : undefined).then((res) => {
+    const params: { status?: string; queue?: string } = {};
+    if (statusFilter) params.status = statusFilter;
+    if (queueFilter) params.queue = queueFilter;
+    serviceApi.listTickets(token, Object.keys(params).length ? params : undefined).then((res) => {
       if (res.success && res.data) setTickets(res.data as ServiceTicket[]);
     });
   };
 
-  useEffect(() => { load(); }, [token, statusFilter]);
+  useEffect(() => { load(); }, [token, statusFilter, queueFilter]);
 
   const create = async () => {
     if (!token || !subject.trim()) return;
@@ -47,20 +72,22 @@ export default function ServiceDesk() {
 
   return (
     <div className="p-8 w-full px-4 sm:px-6 lg:px-8">
-      <h1 className="text-xl font-semibold mb-4">Service desk</h1>
+      <h1 className="text-xl font-semibold mb-1">Service desk</h1>
+      <p className="text-sm text-[color:var(--text-muted)] mb-4">
+        All ticket operations live here, including tickets created from customer portal approval.
+      </p>
       <div className="flex flex-wrap gap-2 mb-6">
         <input
           className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm flex-1 min-w-[200px]"
-          placeholder="New ticket subject"
+          placeholder="New walk-in ticket subject"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') create(); }}
         />
         <select className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm" value={queue} onChange={(e) => setQueue(e.target.value)}>
-          <option value="general">General</option>
-          <option value="billing">Billing</option>
-          <option value="dev">Dev</option>
-          <option value="email">Email</option>
+          {QUEUES.map((q) => (
+            <option key={q} value={q}>{q.charAt(0).toUpperCase() + q.slice(1)}</option>
+          ))}
         </select>
         <select className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm" value={priority} onChange={(e) => setPriority(e.target.value)}>
           <option value="low">Low</option>
@@ -73,14 +100,27 @@ export default function ServiceDesk() {
         </button>
       </div>
 
-      <div className="mb-3 flex gap-2 text-xs">
+      <div className="mb-3 flex flex-wrap gap-2 text-xs">
         {['', 'open', 'in_progress', 'pending', 'resolved', 'closed'].map((s) => (
           <button
             key={s || 'all'}
+            type="button"
             onClick={() => setStatusFilter(s)}
             className={`px-2.5 py-1 rounded-full border capitalize transition ${statusFilter === s ? 'border-[color:var(--accent)] text-[color:var(--accent)]' : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'}`}
           >
-            {s ? s.replace('_', ' ') : 'All'}
+            {s ? s.replace('_', ' ') : 'All status'}
+          </button>
+        ))}
+      </div>
+      <div className="mb-4 flex flex-wrap gap-2 text-xs">
+        {['', ...QUEUES].map((q) => (
+          <button
+            key={q || 'allq'}
+            type="button"
+            onClick={() => setQueueFilter(q)}
+            className={`px-2.5 py-1 rounded-full border capitalize transition ${queueFilter === q ? 'border-[color:var(--accent)] text-[color:var(--accent)]' : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'}`}
+          >
+            {q || 'All queues'}
           </button>
         ))}
       </div>
@@ -98,6 +138,13 @@ export default function ServiceDesk() {
                 <StatusPill label={t.status} tone={STATUS_TONE[t.status]} />
                 <StatusPill label={t.priority} tone={PRIORITY_TONE[t.priority]} />
                 <span className="text-[11px] text-[color:var(--text-muted)]">{t.queue}</span>
+                {t.workClassification === 'billable_change' && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400">Billable change</span>
+                )}
+                {t.workClassification === 'fix' && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Fix</span>
+                )}
+                {t.customerRequestId && <span className="text-[11px] text-[color:var(--text-muted)]">Portal</span>}
                 {assigneeName(t.assigneeId) && <span className="text-[11px] text-[color:var(--text-muted)]">· {assigneeName(t.assigneeId)}</span>}
               </div>
             </div>
@@ -133,6 +180,7 @@ export default function ServiceDesk() {
 function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { token } = useAuth();
   const [ticket, setTicket] = useState<ServiceTicket | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
   const [comment, setComment] = useState('');
   const [internal, setInternal] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -143,6 +191,13 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
   };
   useEffect(reload, [id, token]);
 
+  useEffect(() => {
+    if (!token) return;
+    usersApi.list(1, 200, token).then((res) => {
+      if (res.success && res.data) setUsers((res.data as { data?: User[] }).data ?? []);
+    });
+  }, [token]);
+
   const addComment = async () => {
     if (!token || !comment.trim()) return;
     setBusy(true);
@@ -151,27 +206,35 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
     if (r.success && r.data) { setTicket(r.data as ServiceTicket); setComment(''); onChanged(); }
   };
 
-  const setStatus = async (status: string) => {
+  const patch = async (data: Partial<ServiceTicket>) => {
     if (!token) return;
-    await serviceApi.updateTicket(id, { status }, token);
+    await serviceApi.updateTicket(id, data, token);
     reload();
     onChanged();
   };
 
+  const issue = issueLabel(ticket ?? { _id: '', subject: '', status: '', priority: '', queue: '' });
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-md h-full overflow-y-auto bg-[color:var(--bg-surface)] border-l border-[color:var(--border-subtle)] p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg h-full overflow-y-auto bg-[color:var(--bg-surface)] border-l border-[color:var(--border-subtle)] p-6 animate-fade-in" onClick={(e) => e.stopPropagation()}>
         {!ticket ? (
           <p className="text-sm text-[color:var(--text-muted)]">Loading…</p>
         ) : (
           <>
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-lg font-semibold">{ticket.subject}</h2>
-              <button onClick={onClose} className="text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]">✕</button>
+              <button type="button" onClick={onClose} className="text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]">✕</button>
             </div>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <StatusPill label={ticket.status} tone={STATUS_TONE[ticket.status]} />
               <StatusPill label={ticket.priority} tone={PRIORITY_TONE[ticket.priority]} />
+              {ticket.workClassification === 'billable_change' && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400">Billable change</span>
+              )}
+              {ticket.workClassification === 'fix' && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">Fix</span>
+              )}
               <span className="text-[11px] text-[color:var(--text-muted)]">{ticket.queue}</span>
             </div>
             {ticket.description && <p className="mt-3 text-sm text-[color:var(--text-muted)] whitespace-pre-wrap">{ticket.description}</p>}
@@ -183,6 +246,39 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
               {ticket.contractId && typeof ticket.contractId === 'object' && (
                 <div><span className="text-[color:var(--text-muted)]">Contract</span><p className="font-medium">{ticket.contractId.title}</p></div>
               )}
+              {ticket.customerRequestId && (
+                <div className="col-span-2">
+                  <span className="text-[color:var(--text-muted)]">Portal request</span>
+                  <p className="font-mono text-[11px] break-all">{String(ticket.customerRequestId)}</p>
+                  <Link to="/admin/customer-requests" className="text-[color:var(--accent)] text-xs hover:underline">Approval queue</Link>
+                </div>
+              )}
+              {ticket.accountId && typeof ticket.accountId === 'object' && (
+                <div>
+                  <span className="text-[color:var(--text-muted)]">CRM account</span>
+                  <p>
+                    <Link to={`/crm/accounts/${ticket.accountId._id}`} className="text-[color:var(--accent)] hover:underline">
+                      {ticket.accountId.name}
+                    </Link>
+                  </p>
+                </div>
+              )}
+              {ticket.projectId && typeof ticket.projectId === 'object' && (
+                <div>
+                  <span className="text-[color:var(--text-muted)]">Project</span>
+                  <p>
+                    <Link to={`/projects/${ticket.projectId._id}/dashboard`} className="text-[color:var(--accent)] hover:underline">
+                      {ticket.projectId.key ?? ticket.projectId.name}
+                    </Link>
+                  </p>
+                </div>
+              )}
+              {issue && (
+                <div className="col-span-2">
+                  <span className="text-[color:var(--text-muted)]">Project issue</span>
+                  <p className="font-medium">{issue}</p>
+                </div>
+              )}
               {ticket.resolutionDueAt && (
                 <div><span className="text-[color:var(--text-muted)]">Resolution due</span><p className={`font-medium ${new Date(ticket.resolutionDueAt) < new Date() && !ticket.resolvedAt ? 'text-rose-500' : ''}`}>{new Date(ticket.resolutionDueAt).toLocaleString()}</p></div>
               )}
@@ -191,10 +287,48 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
               )}
             </div>
 
-            <div className="mt-4 flex gap-2 text-xs">
-              {ticket.status === 'open' && <button onClick={() => setStatus('in_progress')} className="px-2.5 py-1 rounded-lg border border-[color:var(--border-subtle)]">Start</button>}
-              {['open', 'in_progress', 'pending'].includes(ticket.status) && <button onClick={() => setStatus('resolved')} className="px-2.5 py-1 rounded-lg border border-[color:var(--border-subtle)]">Resolve</button>}
-              {ticket.status === 'resolved' && <button onClick={() => setStatus('closed')} className="px-2.5 py-1 rounded-lg border border-[color:var(--border-subtle)]">Close</button>}
+            <div className="mt-4 space-y-2 text-sm">
+              <label className="block text-[12px] text-[color:var(--text-muted)]">Status</label>
+              <select
+                className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2"
+                value={ticket.status}
+                onChange={(e) => patch({ status: e.target.value })}
+              >
+                {['open', 'pending', 'in_progress', 'resolved', 'closed'].map((s) => (
+                  <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                ))}
+              </select>
+              <label className="block text-[12px] text-[color:var(--text-muted)]">Priority</label>
+              <select
+                className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2"
+                value={ticket.priority}
+                onChange={(e) => patch({ priority: e.target.value })}
+              >
+                {['low', 'medium', 'high', 'urgent'].map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              <label className="block text-[12px] text-[color:var(--text-muted)]">Queue</label>
+              <select
+                className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2"
+                value={ticket.queue}
+                onChange={(e) => patch({ queue: e.target.value })}
+              >
+                {QUEUES.map((q) => (
+                  <option key={q} value={q}>{q}</option>
+                ))}
+              </select>
+              <label className="block text-[12px] text-[color:var(--text-muted)]">Assignee</label>
+              <select
+                className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2"
+                value={assigneeIdOf(ticket.assigneeId)}
+                onChange={(e) => patch({ assigneeId: (e.target.value || '') as ServiceTicket['assigneeId'] })}
+              >
+                <option value="">Unassigned</option>
+                {users.filter((u) => u.enabled !== false).map((u) => (
+                  <option key={u._id} value={u._id}>{u.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="mt-6">
@@ -208,7 +342,7 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[12px] font-medium">{c.authorName ?? 'User'}</span>
                       <span className="text-[10px] text-[color:var(--text-muted)]">
-                        {c.internal ? 'Internal · ' : ''}{new Date(c.createdAt).toLocaleString()}
+                        {c.internal ? 'Internal · ' : 'Public · '}{new Date(c.createdAt).toLocaleString()}
                       </span>
                     </div>
                     <p className="text-[13px] mt-1 whitespace-pre-wrap">{c.body}</p>
@@ -229,7 +363,7 @@ function TicketDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
                     <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
                     Internal note
                   </label>
-                  <button onClick={addComment} disabled={busy || !comment.trim()} className="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50">
+                  <button type="button" onClick={addComment} disabled={busy || !comment.trim()} className="btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50">
                     {busy ? 'Adding…' : 'Add comment'}
                   </button>
                 </div>

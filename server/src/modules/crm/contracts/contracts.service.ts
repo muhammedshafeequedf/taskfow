@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { CrmContract, type CrmContractKind } from '../models/crmContract.model';
-import { CrmAccount } from '../models/crmAccount.model';
+import { CustomerOrg } from '../../customer-portal/customer-org/customerOrg.model';
 import { WorkLog } from '../../workLogs/workLog.model';
 import { SlaPolicy } from '../../service-desk/models/slaPolicy.model';
 import { ApiError } from '../../../utils/ApiError';
@@ -23,11 +23,12 @@ const ALLOWED_UPDATE = [
   'projectId',
   'dealId',
   'slaPolicyId',
-  'accountId',
+  'customerOrgId',
 ] as const;
 
 export type ListContractsQuery = {
   accountId?: string;
+  customerOrgId?: string;
   kind?: string;
   status?: string;
   renewingWithinDays?: number;
@@ -56,7 +57,7 @@ function pickUpdates(input: Record<string, unknown>): Record<string, unknown> {
       out[key] = Boolean(val);
       continue;
     }
-    if (key === 'projectId' || key === 'dealId' || key === 'slaPolicyId' || key === 'accountId') {
+    if (key === 'projectId' || key === 'dealId' || key === 'slaPolicyId' || key === 'customerOrgId') {
       out[key] = val === null || val === '' ? null : val;
       continue;
     }
@@ -68,6 +69,7 @@ function pickUpdates(input: Record<string, unknown>): Record<string, unknown> {
 export async function listContracts(workspaceId: string | null | undefined, query: ListContractsQuery = {}) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
+  if (query.customerOrgId) filter.customerOrgId = query.customerOrgId;
   if (query.accountId) filter.accountId = query.accountId;
   if (query.kind) filter.kind = query.kind;
   if (query.status) filter.status = query.status;
@@ -78,6 +80,7 @@ export async function listContracts(workspaceId: string | null | undefined, quer
     filter.renewalDate = { $gte: now, $lte: until };
   }
   return CrmContract.find(filter)
+    .populate('customerOrgId', 'name')
     .populate('accountId', 'name type')
     .populate('slaPolicyId', 'name')
     .sort({ renewalDate: 1, startDate: -1 })
@@ -86,8 +89,10 @@ export async function listContracts(workspaceId: string | null | undefined, quer
 
 export async function createContract(workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
-  const account = await CrmAccount.findOne({ _id: input.accountId, taskflowOrganizationId: toOrgOid(orgId) });
-  if (!account) throw new ApiError(404, 'Account not found');
+  const customerOrgId = String(input.customerOrgId ?? '');
+  if (!customerOrgId) throw new ApiError(400, 'Customer organisation is required');
+  const customerOrg = await CustomerOrg.findOne({ _id: customerOrgId, taskflowOrganizationId: toOrgOid(orgId) });
+  if (!customerOrg) throw new ApiError(404, 'Customer organisation not found');
   if (!input.title || !String(input.title).trim()) throw new ApiError(400, 'Title is required');
   if (!input.startDate) throw new ApiError(400, 'Start date is required');
 
@@ -102,7 +107,8 @@ export async function createContract(workspaceId: string | null | undefined, inp
 
   const doc = await CrmContract.create({
     taskflowOrganizationId: toOrgOid(orgId),
-    accountId: input.accountId,
+    accountId: input.accountId || undefined,
+    customerOrgId,
     dealId: input.dealId || undefined,
     projectId: input.projectId || undefined,
     title: String(input.title).trim(),

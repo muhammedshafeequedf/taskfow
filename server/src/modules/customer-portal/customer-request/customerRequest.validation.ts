@@ -19,6 +19,7 @@ export const listRequestsQuerySchema = z.object({
 export const reviewRequestSchema = z.object({
   note: z.string().optional(),
   reason: z.string().optional(),
+  workClassification: z.enum(['billable_change', 'fix']).optional(),
 });
 
 export type CreateRequestInput = z.infer<typeof createRequestSchema>;

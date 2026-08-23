@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { CrmDeal } from '../models/crmDeal.model';
 import { CrmPipeline } from '../models/crmPipeline.model';
-import { CrmAccount } from '../models/crmAccount.model';
+import { CustomerOrg } from '../../customer-portal/customer-org/customerOrg.model';
 import { Project } from '../../projects/project.model';
 import * as projectsService from '../../projects/projects.service';
 import { ApiError } from '../../../utils/ApiError';
@@ -13,21 +13,26 @@ export async function listDeals(workspaceId: string | null | undefined, opts: { 
   if (opts.status) filter.status = opts.status;
   if (opts.stageId) filter.stageId = opts.stageId;
   return CrmDeal.find(filter)
+    .populate('customerOrgId', 'name status')
     .populate('accountId', 'name type')
     .populate('ownerId', 'name email')
+    .populate('contactId', 'name email')
     .sort({ updatedAt: -1 })
     .lean();
 }
 
 export async function createDeal(workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
-  const account = await CrmAccount.findOne({ _id: input.accountId, taskflowOrganizationId: toOrgOid(orgId) });
-  if (!account) throw new ApiError(404, 'Account not found');
+  const customerOrgId = String(input.customerOrgId ?? '');
+  if (!customerOrgId) throw new ApiError(400, 'Customer organisation is required');
+  const customerOrg = await CustomerOrg.findOne({ _id: customerOrgId, taskflowOrganizationId: toOrgOid(orgId) });
+  if (!customerOrg) throw new ApiError(404, 'Customer organisation not found');
   const pipeline = await CrmPipeline.findOne({ _id: input.pipelineId, taskflowOrganizationId: toOrgOid(orgId) });
   if (!pipeline) throw new ApiError(404, 'Pipeline not found');
   const doc = await CrmDeal.create({
     taskflowOrganizationId: toOrgOid(orgId),
-    accountId: input.accountId,
+    customerOrgId,
+    contactId: input.contactId || undefined,
     pipelineId: input.pipelineId,
     stageId: input.stageId,
     title: String(input.title ?? '').trim(),
@@ -63,7 +68,8 @@ export async function moveDealStage(id: string, workspaceId: string | null | und
   deal.stageId = new mongoose.Types.ObjectId(stageId);
   deal.probability = (stage as { probability?: number }).probability ?? deal.probability;
   if ((stage as { isWon?: boolean }).isWon) deal.status = 'won';
-  if ((stage as { isLost?: boolean }).isLost) deal.status = 'lost';
+  else if ((stage as { isLost?: boolean }).isLost) deal.status = 'lost';
+  else deal.status = 'open';
   await deal.save();
   if (deal.status === 'won') {
     try {
@@ -104,15 +110,20 @@ export async function createProjectFromDeal(
   deal.status = 'won';
   await deal.save();
   await Project.findByIdAndUpdate(projectId, {
-    $set: { crmAccountId: deal.accountId },
+    $set: { ...(deal.customerOrgId ? { orgId: deal.customerOrgId } : {}) },
   });
-  const account = await CrmAccount.findById(deal.accountId);
-  if (account) {
-    const pid = new mongoose.Types.ObjectId(projectId);
-    if (!account.projectIds.some((x) => String(x) === projectId)) {
-      account.projectIds.push(pid);
-      await account.save();
-    }
+  try {
+    const { runCommercialHandoff } = await import('../commercialHandoff.service');
+    await runCommercialHandoff({
+      workspaceId: orgId,
+      userId,
+      customerOrgId: deal.customerOrgId ? String(deal.customerOrgId) : undefined,
+      dealId: String(deal._id),
+      createProject: false,
+      createPortalOrg: false,
+    });
+  } catch (err) {
+    console.error('commercialHandoff from deal project:', err);
   }
   return { deal: deal.toObject(), project };
 }

@@ -32,7 +32,7 @@ export async function listExpenses(
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (query.status) filter.status = query.status;
   if (query.category) filter.category = query.category;
-  return AccountExpense.find(filter).populate('vendorAccountId', 'name').sort({ expenseDate: -1 }).lean();
+  return AccountExpense.find(filter).populate('vendorAccountId', 'name').populate('purchaseOrderId', 'poNumber').populate('projectId', 'name key').sort({ expenseDate: -1 }).lean();
 }
 
 export async function createExpense(workspaceId: string | null | undefined, input: Record<string, unknown>, userId?: string) {
