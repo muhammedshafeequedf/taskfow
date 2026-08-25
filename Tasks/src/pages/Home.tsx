@@ -186,6 +186,16 @@ const MODULE_DETAILS: Record<string, ModuleDetail> = {
       'Document dashboard',
     ],
   },
+  monitor: {
+    summary: 'Watch apps in production — logs, errors, live users, performance, and uptime.',
+    features: [
+      'Environments & app API keys',
+      'Live log tail',
+      'Grouped errors & crashes',
+      'Web vitals & HTTP',
+      'Uptime checks',
+    ],
+  },
   inbox: {
     summary: 'A single place for notifications, mentions, and cross-module activity.',
     features: [
@@ -362,6 +372,16 @@ function buildTiles(
       to: '/documents',
       icon: <DashboardIcon className="h-[18px] w-[18px]" />,
       keywords: 'documents proposals sow',
+    });
+  }
+  if (canAccessModule(user, 'monitor', enabledModules)) {
+    tiles.push({
+      id: 'monitor',
+      title: 'Monitor',
+      description: 'Logs, errors, live users, uptime',
+      to: '/monitor',
+      icon: <BoardsIcon className="h-[18px] w-[18px]" />,
+      keywords: 'monitor logs errors uptime vitals performance',
     });
   }
   if (canAccessModule(user, 'inbox', enabledModules)) {

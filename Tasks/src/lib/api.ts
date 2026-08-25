@@ -1,3 +1,5 @@
+import { isMonitorIngestUrl, monitorHttp } from './monitorClient';
+
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
 
@@ -35,7 +37,20 @@ async function request<T>(
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const url = `${API_BASE}${path}`;
+  const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const res = await fetch(url, { ...init, headers });
+  const durationMs = Math.round(
+    (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started
+  );
+  if (!isMonitorIngestUrl(url) && (res.status >= 500 || durationMs >= 2000)) {
+    monitorHttp({
+      method: String(init.method || 'GET'),
+      url,
+      status: res.status,
+      durationMs,
+    });
+  }
   const json = await res.json().catch(() => ({}));
 
   if (!res.ok) {
@@ -3283,4 +3298,90 @@ export const resourcesApi = {
   listProfiles: (token: string) => api.get<ResourceProfileRow[]>('/resources/profiles', token),
   upsertProfile: (data: Record<string, unknown>, token: string) => api.put('/resources/profiles', data, token),
 };
+
+const monitorQs = (params?: Record<string, string | undefined>) => {
+  const sp = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([k, v]) => {
+    if (v) sp.set(k, v);
+  });
+  const s = sp.toString();
+  return s ? `?${s}` : '';
+};
+
+export const monitorApi = {
+  listProjects: (token: string) => api.get<MonitorProjectRecord[]>(`/monitor/projects`, token),
+  pmSuggestions: (token: string) =>
+    api.get<Array<{ _id: string; name: string; key: string }>>(`/monitor/pm-suggestions`, token),
+  getProject: (projectId: string, token: string) =>
+    api.get<MonitorProjectRecord>(`/monitor/projects/${projectId}`, token),
+  createProject: (body: { name: string; key?: string; sourceProjectId?: string }, token: string) =>
+    api.post<MonitorProjectRecord>(`/monitor/projects`, body, token),
+  deleteProject: (projectId: string, token: string) =>
+    api.delete(`/monitor/projects/${projectId}`, token),
+  overview: (projectId: string, token: string) =>
+    api.get<Record<string, unknown>>(`/monitor/projects/${projectId}/overview`, token),
+  listEnvironments: (projectId: string, token: string) =>
+    api.get<MonitorEnvironment[]>(`/monitor/projects/${projectId}/environments`, token),
+  createEnvironment: (projectId: string, body: { name: string; slug?: string }, token: string) =>
+    api.post(`/monitor/projects/${projectId}/environments`, body, token),
+  deleteEnvironment: (projectId: string, id: string, token: string) =>
+    api.delete(`/monitor/projects/${projectId}/environments/${id}`, token),
+  listApps: (projectId: string, token: string, environmentId?: string) =>
+    api.get<MonitorApp[]>(`/monitor/projects/${projectId}/apps${environmentId ? `?environmentId=${environmentId}` : ''}`, token),
+  createApp: (projectId: string, body: { name: string; kind?: string; environmentId: string }, token: string) =>
+    api.post<MonitorApp & { apiKey?: string }>(`/monitor/projects/${projectId}/apps`, body, token),
+  rotateKey: (projectId: string, appId: string, token: string) =>
+    api.post<MonitorApp & { apiKey?: string }>(`/monitor/projects/${projectId}/apps/${appId}/rotate-key`, {}, token),
+  deleteApp: (projectId: string, appId: string, token: string) =>
+    api.delete(`/monitor/projects/${projectId}/apps/${appId}`, token),
+  logs: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/logs${monitorQs(params)}`, token),
+  errors: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/errors${monitorQs(params)}`, token),
+  patchError: (projectId: string, groupId: string, status: string, token: string) =>
+    api.patch(`/monitor/projects/${projectId}/errors/${groupId}`, { status }, token),
+  liveUsers: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/live-users${monitorQs(params)}`, token),
+  transactions: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/transactions${monitorQs(params)}`, token),
+  http: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/http${monitorQs(params)}`, token),
+  vitals: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/vitals${monitorQs(params)}`, token),
+  events: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/events${monitorQs(params)}`, token),
+  releases: (projectId: string, token: string, params?: Record<string, string | undefined>) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/releases${monitorQs(params)}`, token),
+  devices: (projectId: string, token: string) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/devices`, token),
+  uptime: (projectId: string, token: string) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/uptime`, token),
+  createUptime: (projectId: string, body: Record<string, unknown>, token: string) =>
+    api.post(`/monitor/projects/${projectId}/uptime`, body, token),
+  deleteUptime: (projectId: string, checkId: string, token: string) =>
+    api.delete(`/monitor/projects/${projectId}/uptime/${checkId}`, token),
+  uptimeSamples: (projectId: string, token: string, checkId?: string) =>
+    api.get<unknown[]>(`/monitor/projects/${projectId}/uptime-samples${checkId ? `?checkId=${checkId}` : ''}`, token),
+};
+
+export interface MonitorProjectRecord {
+  _id: string;
+  name: string;
+  key: string;
+}
+
+export interface MonitorEnvironment {
+  _id: string;
+  name: string;
+  slug: string;
+}
+
+export interface MonitorApp {
+  _id: string;
+  name: string;
+  kind: string;
+  keyPrefix: string;
+  environmentId: string | { _id: string; name: string; slug: string };
+  apiKey?: string;
+}
 

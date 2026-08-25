@@ -39,6 +39,7 @@ import { accountsRoutes } from '../modules/accounts/accounts.routes';
 import { documentsRoutes } from '../modules/documents/documents.routes';
 import { calendarRoutes } from '../modules/calendar/calendar.routes';
 import { searchRoutes } from '../modules/search/search.routes';
+import { monitorStaffRoutes, monitorIngestRoutes } from '../modules/monitor/monitor.routes';
 import { customerRoleRoutes } from '../modules/customer-portal/customer-role/customerRole.routes';
 import { customerUserRoutes } from '../modules/customer-portal/customer-user/customerUser.routes';
 import { customerProjectMappingRoutes } from '../modules/customer-portal/customer-project-mapping/customerProjectMapping.routes';
@@ -63,6 +64,7 @@ const serviceEnabled = requireModuleEnabled('service');
 const portalAdminEnabled = requireModuleEnabled('portal-admin');
 const calendarEnabled = requireModuleEnabled('calendar');
 const documentsEnabled = requireModuleEnabled('documents');
+const monitorEnabled = requireModuleEnabled('monitor');
 
 router.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({
@@ -122,6 +124,8 @@ router.use('/procurement', procurementEnabled, procurementRoutes);
 router.use('/accounts', accountsEnabled, accountsRoutes);
 router.use('/documents', documentsEnabled, documentsRoutes);
 router.use('/calendar', calendarEnabled, calendarRoutes);
+router.use('/monitor', monitorEnabled, monitorIngestRoutes);
+router.use('/monitor', monitorEnabled, monitorStaffRoutes);
 router.use('/search', searchRoutes);
 
 export const apiRoutes = router;

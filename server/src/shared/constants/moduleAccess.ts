@@ -16,7 +16,8 @@ export type ModuleId =
   | 'calendar'
   | 'documents'
   | 'inbox'
-  | 'core';
+  | 'core'
+  | 'monitor';
 
 /** Cannot be turned off — needed to stay signed in, notified, and re-enable modules. */
 export const ALWAYS_ON_MODULES = ['core', 'auth'] as const satisfies readonly ModuleId[];
@@ -35,6 +36,7 @@ export const TOGGLEABLE_MODULES = [
   'portal-admin',
   'calendar',
   'documents',
+  'monitor',
 ] as const satisfies readonly ModuleId[];
 
 export type ToggleableModuleId = (typeof TOGGLEABLE_MODULES)[number];
@@ -174,6 +176,12 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.documents.sow.list',
     'taskflow.documents.policy.list',
   ],
+  monitor: [
+    'taskflow.monitor.project.read',
+    'taskflow.monitor.project.manage',
+    'taskflow.monitor.log.read',
+    'taskflow.monitor.error.read',
+  ],
   inbox: ['inbox.inbox.read', 'inbox.inbox.list', 'inbox:read'],
   core: [
     'taskflow.core.company.read',
@@ -222,6 +230,7 @@ export const MODULE_PERMISSION_PREFIXES: Record<ModuleId, readonly string[]> = {
   'portal-admin': ['taskflow.customer_portal.', 'customers:', 'customer-requests:'],
   calendar: ['taskflow.calendar.'],
   documents: ['taskflow.documents.'],
+  monitor: ['taskflow.monitor.'],
   inbox: ['inbox.', 'inbox:'],
   core: ['taskflow.core.'],
 };
@@ -243,7 +252,8 @@ export function userHasModulePermission(user: AccessUser, moduleId: ModuleId): b
 /**
  * Hub tile / module shell access:
  * platform module must be enabled AND the user must have at least one permission for it.
- * Platform admins are not exempt — their effective permission list (including revokes) is used.
+ * Platform admins see every enabled module (same as `canAny`) so newly added modules
+ * appear on the hub without waiting for a role re-seed.
  */
 export function canAccessModule(
   user: AccessUser,
@@ -251,5 +261,6 @@ export function canAccessModule(
   enabledModules?: EnabledModulesMap | null
 ): boolean {
   if (!isModuleEnabled(moduleId, enabledModules)) return false;
+  if (isPlatformAdmin(user)) return true;
   return userHasModulePermission(user, moduleId);
 }

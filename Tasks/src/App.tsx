@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-r
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PlatformModulesProvider } from './contexts/PlatformModulesContext';
 import { usePushRegistration } from './hooks/usePushRegistration';
+import { MonitorInstrumentation } from './components/MonitorInstrumentation';
 import { AppDisplayTitle } from './hooks/useAppDisplayName';
 import { NotificationsProvider } from './contexts/NotificationsContext';
 import { TaskflowAuthGuard } from './components/ProtectedRoute';
@@ -23,6 +24,7 @@ import {
   ProcurementModuleLayout,
   DocumentsModuleLayout,
   CalendarModuleLayout,
+  MonitorModuleLayout,
   CoreModuleLayout,
 } from './components/layouts/ModuleLayouts';
 import PortalRoute from './components/PortalRoute';
@@ -177,6 +179,11 @@ import {
   CalendarReviews,
   CalendarStandups,
 } from './pages/calendar/CalendarSections';
+import MonitorProjects from './pages/monitor/MonitorProjects';
+import MonitorWorkspace from './pages/monitor/MonitorWorkspace';
+import MonitorOverview from './pages/monitor/MonitorOverview';
+import MonitorSetup from './pages/monitor/MonitorSetup';
+import MonitorTelemetry from './pages/monitor/MonitorTelemetry';
 
 function PortalResetPasswordRedirect() {
   const [params] = useSearchParams();
@@ -401,6 +408,25 @@ function AppRoutes() {
           <Route path="/calendar/standups" element={<CalendarStandups />} />
         </Route>
 
+        {/* Project Monitor */}
+        <Route element={<MonitorModuleLayout />}>
+          <Route path="/monitor" element={<MonitorProjects />} />
+          <Route path="/monitor/:monitorProjectId" element={<MonitorWorkspace />}>
+            <Route index element={<MonitorOverview />} />
+            <Route path="setup" element={<MonitorSetup />} />
+            <Route path="logs" element={<MonitorTelemetry />} />
+            <Route path="errors" element={<MonitorTelemetry />} />
+            <Route path="live" element={<MonitorTelemetry />} />
+            <Route path="performance" element={<MonitorTelemetry />} />
+            <Route path="http" element={<MonitorTelemetry />} />
+            <Route path="vitals" element={<MonitorTelemetry />} />
+            <Route path="uptime" element={<MonitorTelemetry />} />
+            <Route path="releases" element={<MonitorTelemetry />} />
+            <Route path="events" element={<MonitorTelemetry />} />
+            <Route path="devices" element={<MonitorTelemetry />} />
+          </Route>
+        </Route>
+
         {/* Customer portal admin module */}
         <Route element={<PortalAdminModuleLayout />}>
         <Route path="/admin/customer-orgs" element={<CustomerOrgs />} />
@@ -455,6 +481,7 @@ function AppWithNotifications() {
   usePushRegistration(token);
   return (
     <NotificationsProvider token={token}>
+      <MonitorInstrumentation />
       <AppDisplayTitle />
       <AppRoutes />
     </NotificationsProvider>

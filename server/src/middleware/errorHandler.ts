@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../utils/ApiError';
+import { monitorError } from '../shared/monitorClient';
 
 export function errorHandler(
   err: unknown,
@@ -17,6 +18,7 @@ export function errorHandler(
   }
 
   if (err instanceof Error) {
+    monitorError(err);
     res.status(500).json({
       success: false,
       message: err.message || 'Internal server error',

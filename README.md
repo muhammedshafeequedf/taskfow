@@ -67,6 +67,7 @@ Atrium is a multi-tenant business platform: one login, one workspace, many modul
 | `service` | **Service Desk** | Tickets & SLA |
 | `calendar` | **Calendar** | Events |
 | `documents` | **Documents** | Document records |
+| `monitor` | **Monitor** | Project telemetry: logs, errors, live users, performance, HTTP, web vitals, uptime, releases |
 | `portal-admin` | **Portal admin** | Customer organization administration |
 | — | **Customer Portal** | External customer login & request tracking |
 
@@ -121,6 +122,15 @@ Always-on: **Core**, **Auth**. Other modules are toggleable; disabled modules hi
 - Campaigns, follow-ups, activities; contracts from the accepted commercial flow
 
 Finance **Accounts** (the `accounts` module) is still the ledger/workflow module — it is not CRM customer companies.
+
+### Monitor
+
+Create **monitor projects** in this module (not Project Manager). Then add environments and apps. Each app gets an ingest API key (`X-Monitor-Key` or `Authorization: Bearer`). Staff UI is JWT-gated.
+
+- Overview, live log tail, grouped errors, live users, performance transactions, HTTP calls, web vitals, uptime (platform pinger), releases, custom events, device breakdown
+- Public ingest: `POST /api/monitor/ingest/{logs|errors|presence|transactions|http|vitals|events|releases}`
+- Mongo TTL (~14 days for most events; errors ~90 days; presence ~5 minutes)
+- This repo can report into Monitor via env: SPA uses `VITE_MONITOR_BASE_URL` + `VITE_MONITOR_KEY`; API uses `MONITOR_BASE_URL` + `MONITOR_KEY`. Default ingest host is `https://taskflow.repod.online/api`.
 
 ### Billing & ops modules
 
@@ -303,6 +313,11 @@ Telegram, Teams, Slack, Discord, WhatsApp, S3, Azure Blob, SMS (Twilio / Fast2SM
 |----------|-------------|
 | `VITE_API_URL` | REST base including `/api` |
 | `VITE_WS_URL` | Socket.IO origin |
+| `VITE_MONITOR_BASE_URL` | Monitor ingest API base (default `https://taskflow.repod.online/api`) |
+| `VITE_MONITOR_KEY` | Web app ingest key (`X-Monitor-Key`) |
+| `VITE_MONITOR_RELEASE` | Optional release label sent with ingest |
+
+Server Monitor self-report: `MONITOR_BASE_URL`, `MONITOR_KEY`, `MONITOR_RELEASE`.
 
 ---
 
@@ -402,6 +417,7 @@ Examples (non-exhaustive):
 | Core | `/api/core/company`, `/api/core/currencies`, `/api/core/modules`, … |
 | PM | `/api/projects`, `/api/issues`, `/api/boards`, `/api/sprints`, … |
 | CRM | `/api/crm/...` (leads, contacts, deals, quotes, campaigns, customer-orgs list, …) |
+| Monitor | `/api/monitor/projects/:projectId/...` (staff) and `/api/monitor/ingest/:kind` (API key) |
 | Billing | `/api/billing/...` |
 | Customer portal | `/api/customer/...`, `/api/admin/customer-orgs` |
 

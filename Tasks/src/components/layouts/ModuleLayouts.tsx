@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlatformModules } from '../../contexts/PlatformModulesContext';
@@ -19,6 +19,7 @@ import {
   buildProcurementNav,
   buildDocumentsNav,
   buildCalendarNav,
+  buildMonitorNav,
   buildCoreNav,
 } from '../moduleNavigation';
 import type { ModuleId } from '../../utils/moduleAccess';
@@ -149,6 +150,30 @@ export function DocumentsModuleLayout() {
 export function CalendarModuleLayout() {
   return (
     <ModuleLayout moduleTitle="Calendar" moduleId="calendar" navBuilder={buildCalendarNav} />
+  );
+}
+
+export function MonitorModuleLayout() {
+  const { user } = useAuth();
+  const { isEnabled, loading } = usePlatformModules();
+  const location = useLocation();
+  const navItems = useMemo(
+    () => buildMonitorNav(user, location.pathname),
+    [user, location.pathname]
+  );
+
+  if (!loading && !isEnabled('monitor')) {
+    return (
+      <Layout navItems={[]} moduleTitle="Monitor">
+        <ModuleDisabledNotice title="Monitor" />
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout navItems={navItems} moduleTitle="Monitor">
+      <Outlet />
+    </Layout>
   );
 }
 

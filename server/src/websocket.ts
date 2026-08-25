@@ -61,6 +61,14 @@ export function initWebSocket(server: HttpServer): void {
         socket.leave(`project:${projectId}`);
       }
     });
+
+    socket.on('subscribe:monitor', (payload: { projectId?: string; environmentId?: string }) => {
+      const projectId = payload?.projectId;
+      if (projectId && typeof projectId === 'string') {
+        socket.join(`monitor:${projectId}`);
+        if (payload.environmentId) socket.join(`monitor:${projectId}:${payload.environmentId}`);
+      }
+    });
   });
 }
 
@@ -75,6 +83,18 @@ export function notifyInboxNew(userId: string, message: Record<string, unknown>)
 
 export function notifyInAppNotification(userId: string, notification: Record<string, unknown>): void {
   if (io) io.to(userId).emit('notification:new', notification);
+}
+
+export function notifyMonitorEvent(
+  projectId: string,
+  environmentId: string,
+  channel: string,
+  payload: unknown
+): void {
+  if (!io) return;
+  const msg = { channel, payload, projectId, environmentId };
+  io.to(`monitor:${projectId}`).emit('monitor:event', msg);
+  if (environmentId) io.to(`monitor:${projectId}:${environmentId}`).emit('monitor:event', msg);
 }
 
 export function notifyPush(

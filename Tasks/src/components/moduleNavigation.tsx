@@ -478,6 +478,32 @@ export function buildDocumentsNav(user: NavUser): NavItem[] {
   return nav;
 }
 
+/** Monitor — project list, then project-scoped telemetry */
+export function buildMonitorNav(user: NavUser, pathname = ''): NavItem[] {
+  const nav: NavItem[] = [];
+  if (!allow(user, 'taskflow.monitor.project.read', 'taskflow.monitor.log.read', 'taskflow.monitor.error.read')) {
+    return nav;
+  }
+  nav.push({ to: '/monitor', label: 'Projects', icon: <ProjectsIcon />, end: true });
+  const match = pathname.match(/^\/monitor\/([^/]+)/);
+  const pid = match?.[1];
+  if (!pid) return nav;
+  const base = `/monitor/${pid}`;
+  nav.push({ to: base, label: 'Overview', icon: <DashboardIcon />, end: true });
+  nav.push({ to: `${base}/setup`, label: 'Setup', icon: <SettingsIcon /> });
+  nav.push({ to: `${base}/logs`, label: 'Logs', icon: <InboxIcon /> });
+  nav.push({ to: `${base}/errors`, label: 'Errors', icon: <IssuesIcon /> });
+  nav.push({ to: `${base}/live`, label: 'Live users', icon: <UsersIcon /> });
+  nav.push({ to: `${base}/performance`, label: 'Performance', icon: <TimesheetIcon /> });
+  nav.push({ to: `${base}/http`, label: 'HTTP', icon: <BoardsIcon /> });
+  nav.push({ to: `${base}/vitals`, label: 'Web vitals', icon: <BoardsIcon /> });
+  nav.push({ to: `${base}/uptime`, label: 'Uptime', icon: <TimesheetIcon /> });
+  nav.push({ to: `${base}/releases`, label: 'Releases', icon: <PackageIcon /> });
+  nav.push({ to: `${base}/events`, label: 'Events', icon: <InboxIcon /> });
+  nav.push({ to: `${base}/devices`, label: 'Devices', icon: <UsersIcon /> });
+  return nav;
+}
+
 /** Calendar — recurring team vs customer-facing */
 export function buildCalendarNav(user: NavUser): NavItem[] {
   const nav: NavItem[] = [];

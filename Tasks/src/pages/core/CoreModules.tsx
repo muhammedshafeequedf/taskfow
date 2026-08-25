@@ -57,6 +57,10 @@ const MODULE_META: Record<ToggleableModuleId, { title: string; description: stri
     title: 'Documents',
     description: 'Templates, proposals, SOWs, and policies.',
   },
+  monitor: {
+    title: 'Monitor',
+    description: 'Logs, errors, live users, performance, and uptime for your apps.',
+  },
 };
 
 export default function CoreModules() {

@@ -1,4 +1,4 @@
-import { NavLink, useNavigate, useLocation, useParams, Link } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationsContext';
@@ -132,9 +132,7 @@ export default function Layout({
   } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projectId: projectIdParam } = useParams<{ projectId?: string }>();
-  const projectIdFromPath = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
-  const projectId = projectIdParam ?? projectIdFromPath;
+  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const [project, setProject] = useState<Project | null>(null);
   const [projectLoading, setProjectLoading] = useState(false);
   const [projectPermissions, setProjectPermissions] = useState<string[]>([]);

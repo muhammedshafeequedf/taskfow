@@ -326,6 +326,20 @@ export const TASK_FLOW_PERMISSIONS = {
       },
       SLA: { MANAGE: 'taskflow.service.sla.manage' },
     },
+    MONITOR: {
+      PROJECT: { READ: 'taskflow.monitor.project.read', MANAGE: 'taskflow.monitor.project.manage' },
+      ENVIRONMENT: { MANAGE: 'taskflow.monitor.environment.manage' },
+      APP: { MANAGE: 'taskflow.monitor.app.manage' },
+      LOG: { READ: 'taskflow.monitor.log.read' },
+      ERROR: { READ: 'taskflow.monitor.error.read', UPDATE: 'taskflow.monitor.error.update' },
+      LIVE: { READ: 'taskflow.monitor.live.read' },
+      PERF: { READ: 'taskflow.monitor.perf.read' },
+      HTTP: { READ: 'taskflow.monitor.http.read' },
+      VITALS: { READ: 'taskflow.monitor.vitals.read' },
+      UPTIME: { READ: 'taskflow.monitor.uptime.read', MANAGE: 'taskflow.monitor.uptime.manage' },
+      RELEASE: { READ: 'taskflow.monitor.release.read' },
+      EVENT: { READ: 'taskflow.monitor.event.read' },
+    },
   },
 } as const;
 

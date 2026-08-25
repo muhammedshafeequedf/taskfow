@@ -266,11 +266,13 @@ async function seedTaskflowRoles() {
     ...flattenPermissions(TASK_FLOW_PERMISSIONS.PROJECT as unknown as Record<string, unknown>),
     TASK_FLOW_PERMISSIONS.AUTH.USER.READ,
     TASK_FLOW_PERMISSIONS.AUTH.USER.LIST,
+    ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.MONITOR as unknown as Record<string, unknown>),
   ];
   const developerPerms = [
     TASK_FLOW_PERMISSIONS.PROJECT.PROJECT.READ,
     TASK_FLOW_PERMISSIONS.PROJECT.PROJECT.LIST,
     TASK_FLOW_PERMISSIONS.PROJECT.MEMBER.READ,
+    ...flattenPermissions(TASK_FLOW_PERMISSIONS.TASKFLOW.MONITOR as unknown as Record<string, unknown>),
   ];
   const viewerPerms = [
     TASK_FLOW_PERMISSIONS.PROJECT.PROJECT.READ,

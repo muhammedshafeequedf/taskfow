@@ -19,6 +19,7 @@ type HubVisualId =
   | 'procurement'
   | 'documents'
   | 'calendar'
+  | 'monitor'
   | 'core';
 
 export function HubModuleVisual({ id }: { id: string }) {
@@ -53,6 +54,8 @@ export function HubModuleVisual({ id }: { id: string }) {
       return <DocumentsVisual />;
     case 'calendar':
       return <CalendarVisual />;
+    case 'monitor':
+      return <MonitorVisual />;
     case 'core':
       return <CoreVisual />;
     default:
@@ -455,6 +458,27 @@ function CalendarVisual() {
           />
         ))}
         <circle cx="118" cy="30" r="3" className="fill-sky-200 hub-anim-pulse" />
+      </svg>
+    </Frame>
+  );
+}
+
+function MonitorVisual() {
+  return (
+    <Frame label="monitor">
+      <svg viewBox="0 0 160 100" className="h-[85%] w-[90%]" fill="none">
+        <rect x="22" y="18" width="116" height="64" rx="6" className="fill-cyan-500/10 stroke-cyan-400/45" strokeWidth="1.3" />
+        <polyline
+          points="32,62 48,48 62,54 78,36 94,44 110,28 128,40"
+          className="stroke-cyan-300/80 hub-anim-blink"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        <circle cx="128" cy="40" r="3.5" className="fill-emerald-300 hub-anim-pulse" />
+        <rect x="32" y="72" width="20" height="4" rx="1" className="fill-rose-400/50 hub-anim-blink" />
+        <rect x="56" y="72" width="28" height="4" rx="1" className="fill-amber-300/40" />
+        <rect x="88" y="72" width="40" height="4" rx="1" className="fill-cyan-300/30" />
       </svg>
     </Frame>
   );

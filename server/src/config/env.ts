@@ -179,6 +179,12 @@ export const env = {
   isMistralEnabled: bool(process.env.IS_MISTRAL_ENABLED),
   mistralApiKey: cleanEnvValue(process.env.MISTRAL_API_KEY),
   mistralModel: cleanEnvValue(process.env.MISTRAL_MODEL),
+
+  monitorBaseUrl: (
+    cleanEnvValue(process.env.MONITOR_BASE_URL) || 'https://taskflow.repod.online/api'
+  ).replace(/\/+$/, ''),
+  monitorKey: cleanEnvValue(process.env.MONITOR_KEY),
+  monitorRelease: cleanEnvValue(process.env.MONITOR_RELEASE) || '1.0.1',
 };
 
 function assertRequiredWhenEnabled(enabled: boolean, integration: string, required: Array<[string, string | undefined]>) {
