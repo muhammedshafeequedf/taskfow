@@ -491,6 +491,7 @@ export function buildMonitorNav(user: NavUser, pathname = ''): NavItem[] {
   const base = `/monitor/${pid}`;
   nav.push({ to: base, label: 'Overview', icon: <DashboardIcon />, end: true });
   nav.push({ to: `${base}/setup`, label: 'Setup', icon: <SettingsIcon /> });
+  nav.push({ to: `${base}/alerts`, label: 'Alerts', icon: <InboxIcon /> });
   nav.push({ to: `${base}/logs`, label: 'Logs', icon: <InboxIcon /> });
   nav.push({ to: `${base}/errors`, label: 'Errors', icon: <IssuesIcon /> });
   nav.push({ to: `${base}/live`, label: 'Live users', icon: <UsersIcon /> });

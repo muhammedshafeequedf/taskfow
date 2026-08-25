@@ -1,4 +1,5 @@
 import { MonitorUptimeCheck, MonitorUptimeSample } from './monitor.models';
+import { evaluateMonitorAlerts } from './alert.service';
 
 async function runCheck(check: {
   _id: unknown;
@@ -39,6 +40,20 @@ async function runCheck(check: {
     { _id: check._id },
     { $set: { nextRunAt: new Date(Date.now() + interval * 60 * 1000) } }
   );
+  if (!ok) {
+    evaluateMonitorAlerts({
+      kind: 'uptime',
+      orgId: String(check.taskflowOrganizationId),
+      projectId: String(check.projectId),
+      fields: {
+        checkId: String(check._id),
+        url: check.url,
+        status: String(status ?? ''),
+        ok: 'false',
+        message: error || `uptime failed ${status ?? ''}`.trim(),
+      },
+    });
+  }
 }
 
 export function startMonitorUptimeScheduler(): void {

@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   isMonitorClientEnabled,
   monitorError,
+  monitorIngest,
+  monitorLog,
   monitorPresence,
   monitorReleaseOnce,
   monitorSessionId,
@@ -71,6 +73,8 @@ export function MonitorInstrumentation() {
     const page = `${location.pathname}${location.search}`;
     const beat = () => monitorPresence(sessionId, page, user?.id);
     beat();
+    monitorIngest('events', { name: 'page_view', props: { page } });
+    monitorLog(`page ${page}`, 'info');
     const timer = window.setInterval(beat, 25000);
     return () => window.clearInterval(timer);
   }, [location.pathname, location.search, user?.id]);

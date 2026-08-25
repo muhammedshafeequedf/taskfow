@@ -10,6 +10,17 @@ export function isMonitorClientEnabled() {
   return Boolean(MONITOR_BASE && MONITOR_KEY);
 }
 
+export function skipClientHttp(url: string) {
+  const u = url.toLowerCase();
+  if (u.includes('/monitor/ingest/')) return true;
+  if (u.includes('/notifications/unread-count')) return true;
+  if (u.includes('/inbox/unread-count')) return true;
+  if (u.includes('/monitor/projects')) return true;
+  if (u.includes('/auth/me')) return true;
+  if (u.includes('/core/modules')) return true;
+  return false;
+}
+
 export function isMonitorIngestUrl(url: string) {
   return url.includes('/monitor/ingest/');
 }
@@ -51,7 +62,7 @@ export function monitorHttp(input: {
   status?: number;
   durationMs?: number;
 }) {
-  if (isMonitorIngestUrl(input.url)) return;
+  if (skipClientHttp(input.url)) return;
   monitorIngest('http', { ...input, direction: 'out' });
 }
 

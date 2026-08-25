@@ -4,6 +4,15 @@ function ingestUrl(kind: string) {
   return `${env.monitorBaseUrl}/monitor/ingest/${kind}`;
 }
 
+export function shouldSkipMonitorHttp(url: string) {
+  const u = url.toLowerCase();
+  if (u.includes('/monitor/ingest/')) return true;
+  if (u.includes('/notifications/unread-count')) return true;
+  if (u.includes('/inbox/unread-count')) return true;
+  if (u.includes('/api/monitor/projects') && !u.includes('/ingest')) return true;
+  return false;
+}
+
 export function isMonitorClientEnabled() {
   return Boolean(env.monitorBaseUrl && env.monitorKey);
 }
@@ -44,7 +53,7 @@ export function monitorHttp(input: {
   durationMs?: number;
   direction?: 'in' | 'out';
 }) {
-  if (input.url.includes('/monitor/ingest/')) return;
+  if (shouldSkipMonitorHttp(input.url)) return;
   monitorIngest('http', input);
 }
 

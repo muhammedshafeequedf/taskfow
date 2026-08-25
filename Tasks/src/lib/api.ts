@@ -1,4 +1,4 @@
-import { isMonitorIngestUrl, monitorHttp } from './monitorClient';
+import { monitorHttp, skipClientHttp } from './monitorClient';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
@@ -39,11 +39,11 @@ async function request<T>(
 
   const url = `${API_BASE}${path}`;
   const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  const res = await fetch(url, { ...init, headers });
+  const res = await fetch(url, { cache: 'no-store', ...init, headers });
   const durationMs = Math.round(
     (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started
   );
-  if (!isMonitorIngestUrl(url) && (res.status >= 500 || durationMs >= 2000)) {
+  if (res.status !== 304 && !skipClientHttp(url)) {
     monitorHttp({
       method: String(init.method || 'GET'),
       url,
@@ -3362,6 +3362,21 @@ export const monitorApi = {
     api.delete(`/monitor/projects/${projectId}/uptime/${checkId}`, token),
   uptimeSamples: (projectId: string, token: string, checkId?: string) =>
     api.get<unknown[]>(`/monitor/projects/${projectId}/uptime-samples${checkId ? `?checkId=${checkId}` : ''}`, token),
+  listAlerts: (projectId: string, token: string) =>
+    api.get<MonitorAlertRule[]>(`/monitor/projects/${projectId}/alerts`, token),
+  createAlert: (projectId: string, body: Record<string, unknown>, token: string) =>
+    api.post<MonitorAlertRule>(`/monitor/projects/${projectId}/alerts`, body, token),
+  updateAlert: (projectId: string, alertId: string, body: Record<string, unknown>, token: string) =>
+    api.patch<MonitorAlertRule>(`/monitor/projects/${projectId}/alerts/${alertId}`, body, token),
+  deleteAlert: (projectId: string, alertId: string, token: string) =>
+    api.delete(`/monitor/projects/${projectId}/alerts/${alertId}`, token),
+  testAlert: (projectId: string, alertId: string, token: string) =>
+    api.post(`/monitor/projects/${projectId}/alerts/${alertId}/test`, {}, token),
+  alertDeliveries: (projectId: string, token: string, ruleId?: string) =>
+    api.get<MonitorAlertDelivery[]>(
+      `/monitor/projects/${projectId}/alert-deliveries${ruleId ? `?ruleId=${ruleId}` : ''}`,
+      token
+    ),
 };
 
 export interface MonitorProjectRecord {
@@ -3383,5 +3398,43 @@ export interface MonitorApp {
   keyPrefix: string;
   environmentId: string | { _id: string; name: string; slug: string };
   apiKey?: string;
+}
+
+export interface MonitorAlertRule {
+  _id: string;
+  name: string;
+  enabled: boolean;
+  trigger:
+    | 'error_new'
+    | 'error_spike'
+    | 'log_level'
+    | 'http_status'
+    | 'transaction_slow'
+    | 'vital_threshold'
+    | 'uptime_down'
+    | 'event_name'
+    | 'new_release';
+  environmentId?: string;
+  appId?: string;
+  recipients: string[];
+  cooldownMinutes: number;
+  lastFiredAt?: string;
+  lastError?: string;
+  fireCount?: number;
+  subjectTemplate?: string;
+  bodyTemplate?: string;
+  conditions?: Record<string, unknown>;
+}
+
+export interface MonitorAlertDelivery {
+  _id: string;
+  ruleId: string;
+  trigger?: string;
+  subject?: string;
+  recipients?: string[];
+  summary?: string;
+  ok?: boolean;
+  error?: string;
+  timestamp?: string;
 }
 

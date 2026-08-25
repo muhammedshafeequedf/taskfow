@@ -16,10 +16,15 @@ export default function MonitorOverview() {
 
   useEffect(() => {
     if (!token || !projectId) return;
-    monitorApi.overview(projectId, token).then((r) => {
-      if (r.success && r.data) setOverview(r.data);
-      else setError(r.message || 'Failed to load overview');
-    });
+    const pull = () => {
+      monitorApi.overview(projectId, token).then((r) => {
+        if (r.success && r.data) setOverview(r.data);
+        else setError(r.message || 'Failed to load overview');
+      });
+    };
+    pull();
+    const timer = window.setInterval(pull, 10000);
+    return () => window.clearInterval(timer);
   }, [token, projectId]);
 
   const bar = useMemo(

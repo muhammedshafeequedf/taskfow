@@ -11,9 +11,15 @@ const manageEnv = [M.ENVIRONMENT.MANAGE];
 const manageApp = [M.APP.MANAGE];
 const manageProject = [M.PROJECT.MANAGE];
 const manageUptime = [M.UPTIME.MANAGE];
+const readAlert = [M.ALERT.READ, ...read];
+const manageAlert = [M.ALERT.MANAGE];
 
 const staff = Router();
 staff.use(authMiddleware);
+staff.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 staff.get('/projects', requireAnyPermission(read), asyncHandler(ctrl.listProjects));
 staff.get('/pm-suggestions', requireAnyPermission(read), asyncHandler(ctrl.listPmSuggestions));
@@ -46,6 +52,13 @@ staff.get('/projects/:projectId/uptime', requireAnyPermission([M.UPTIME.READ, ..
 staff.post('/projects/:projectId/uptime', requireAnyPermission(manageUptime), asyncHandler(ctrl.createUptime));
 staff.delete('/projects/:projectId/uptime/:checkId', requireAnyPermission(manageUptime), asyncHandler(ctrl.deleteUptime));
 staff.get('/projects/:projectId/uptime-samples', requireAnyPermission([M.UPTIME.READ, ...read]), asyncHandler(ctrl.uptimeSamples));
+
+staff.get('/projects/:projectId/alerts', requireAnyPermission(readAlert), asyncHandler(ctrl.listAlerts));
+staff.post('/projects/:projectId/alerts', requireAnyPermission(manageAlert), asyncHandler(ctrl.createAlert));
+staff.patch('/projects/:projectId/alerts/:alertId', requireAnyPermission(manageAlert), asyncHandler(ctrl.updateAlert));
+staff.delete('/projects/:projectId/alerts/:alertId', requireAnyPermission(manageAlert), asyncHandler(ctrl.deleteAlert));
+staff.post('/projects/:projectId/alerts/:alertId/test', requireAnyPermission(manageAlert), asyncHandler(ctrl.testAlert));
+staff.get('/projects/:projectId/alert-deliveries', requireAnyPermission(readAlert), asyncHandler(ctrl.alertDeliveries));
 
 const ingest = Router();
 ingest.post('/ingest/:kind', asyncHandler(ctrl.ingest));

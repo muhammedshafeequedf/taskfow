@@ -95,6 +95,8 @@ export default function MonitorTelemetry() {
 
   useEffect(() => {
     load();
+    const timer = window.setInterval(load, 8000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   useEffect(() => {

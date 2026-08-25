@@ -7,7 +7,7 @@ import { apiRoutes } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import morgan from 'morgan';
 import { env } from './config/env';
-import { monitorHttp, monitorTransaction } from './shared/monitorClient';
+import { monitorHttp, monitorLog, monitorTransaction, shouldSkipMonitorHttp } from './shared/monitorClient';
 
 const app = express();
 
@@ -42,20 +42,29 @@ app.use(
 );
 app.use(express.json());
 app.use((req, res, next) => {
-  if (req.originalUrl.includes('/monitor/ingest/')) return next();
+  if (shouldSkipMonitorHttp(req.originalUrl)) return next();
   const started = Date.now();
   res.on('finish', () => {
+    if (res.statusCode === 304) return;
     const durationMs = Date.now() - started;
     const url = req.originalUrl;
-    if (res.statusCode >= 500 || durationMs >= 2000) {
-      monitorHttp({
-        method: req.method,
-        url,
-        status: res.statusCode,
-        durationMs,
-        direction: 'in',
-      });
+    const noisy =
+      url.includes('/api/auth/me') ||
+      url.includes('/api/core/modules') ||
+      url.includes('/api/notifications');
+    if (noisy && res.statusCode < 400 && durationMs < 1500) return;
+    monitorHttp({
+      method: req.method,
+      url,
+      status: res.statusCode,
+      durationMs,
+      direction: 'in',
+    });
+    if (res.statusCode >= 400 || durationMs >= 800) {
       monitorTransaction(`${req.method} ${req.path}`, durationMs, String(res.statusCode));
+    }
+    if (res.statusCode >= 500) {
+      monitorLog(`${req.method} ${url} → ${res.statusCode} (${durationMs}ms)`, 'error');
     }
   });
   next();

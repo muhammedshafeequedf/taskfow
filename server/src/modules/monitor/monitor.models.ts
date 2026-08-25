@@ -270,6 +270,94 @@ export const MonitorUptimeCheck = mongoose.model(
   )
 );
 
+export const MONITOR_ALERT_TRIGGERS = [
+  'error_new',
+  'error_spike',
+  'log_level',
+  'http_status',
+  'transaction_slow',
+  'vital_threshold',
+  'uptime_down',
+  'event_name',
+  'new_release',
+] as const;
+
+export type MonitorAlertTrigger = (typeof MONITOR_ALERT_TRIGGERS)[number];
+
+export interface IMonitorAlertRule extends Document {
+  taskflowOrganizationId: mongoose.Types.ObjectId;
+  projectId: mongoose.Types.ObjectId;
+  name: string;
+  enabled: boolean;
+  trigger: MonitorAlertTrigger;
+  environmentId?: mongoose.Types.ObjectId;
+  appId?: mongoose.Types.ObjectId;
+  recipients: string[];
+  cooldownMinutes: number;
+  lastFiredAt?: Date;
+  lastError?: string;
+  fireCount: number;
+  subjectTemplate: string;
+  bodyTemplate: string;
+  conditions: {
+    logLevels?: string[];
+    messageContains?: string;
+    minCount?: number;
+    windowMinutes?: number;
+    httpStatusMin?: number;
+    httpStatusMax?: number;
+    durationMs?: number;
+    vitalName?: string;
+    vitalGte?: number;
+    eventName?: string;
+    uptimeFailStreak?: number;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const alertRuleSchema = new Schema<IMonitorAlertRule>(
+  {
+    ...orgIdx,
+    projectId: { type: Schema.Types.ObjectId, ref: 'MonitorProject', required: true, index: true },
+    name: { type: String, required: true, trim: true },
+    enabled: { type: Boolean, default: true },
+    trigger: { type: String, enum: MONITOR_ALERT_TRIGGERS, required: true },
+    environmentId: { type: Schema.Types.ObjectId, ref: 'MonitorEnvironment' },
+    appId: { type: Schema.Types.ObjectId, ref: 'MonitorApp' },
+    recipients: { type: [String], default: [] },
+    cooldownMinutes: { type: Number, default: 15 },
+    lastFiredAt: { type: Date },
+    lastError: { type: String },
+    fireCount: { type: Number, default: 0 },
+    subjectTemplate: { type: String, default: '[Monitor] {{project}} · {{trigger}}' },
+    bodyTemplate: { type: String, default: '' },
+    conditions: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: true }
+);
+alertRuleSchema.index({ projectId: 1, enabled: 1, trigger: 1 });
+export const MonitorAlertRule = mongoose.model<IMonitorAlertRule>('MonitorAlertRule', alertRuleSchema);
+
+export const MonitorAlertDelivery = mongoose.model(
+  'MonitorAlertDelivery',
+  new Schema(
+    {
+      ...orgIdx,
+      projectId: { type: Schema.Types.ObjectId, required: true, index: true },
+      ruleId: { type: Schema.Types.ObjectId, required: true, index: true },
+      trigger: { type: String },
+      subject: { type: String },
+      recipients: { type: [String], default: [] },
+      summary: { type: String },
+      ok: { type: Boolean, default: true },
+      error: { type: String },
+      timestamp: { type: Date, default: Date.now, index: true },
+    },
+    { timestamps: false }
+  ).index({ timestamp: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 })
+);
+
 export const MonitorUptimeSample = mongoose.model(
   'MonitorUptimeSample',
   new Schema(

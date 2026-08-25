@@ -181,6 +181,8 @@ export const MODULE_ACCESS: Record<ModuleId, readonly string[]> = {
     'taskflow.monitor.project.manage',
     'taskflow.monitor.log.read',
     'taskflow.monitor.error.read',
+    'taskflow.monitor.alert.read',
+    'taskflow.monitor.alert.manage',
   ],
   inbox: ['inbox.inbox.read', 'inbox.inbox.list', 'inbox:read'],
   core: [

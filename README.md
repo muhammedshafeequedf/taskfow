@@ -130,7 +130,7 @@ Create **monitor projects** in this module (not Project Manager). Then add envir
 - Overview, live log tail, grouped errors, live users, performance transactions, HTTP calls, web vitals, uptime (platform pinger), releases, custom events, device breakdown
 - Public ingest: `POST /api/monitor/ingest/{logs|errors|presence|transactions|http|vitals|events|releases}`
 - Mongo TTL (~14 days for most events; errors ~90 days; presence ~5 minutes)
-- This repo can report into Monitor via env: SPA uses `VITE_MONITOR_BASE_URL` + `VITE_MONITOR_KEY`; API uses `MONITOR_BASE_URL` + `MONITOR_KEY`. Default ingest host is `https://taskflow.repod.online/api`.
+- Configurable email alerts per monitor project (`/monitor/:id/alerts`): trigger, filters, recipients, templates, cooldown. Uses the same SMTP / Graph / SendGrid / ByteMail transport as the rest of Atrium.
 
 ### Billing & ops modules
 

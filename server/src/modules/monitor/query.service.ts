@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import {
   MonitorCustomEvent,
   MonitorErrorGroup,
@@ -25,10 +26,20 @@ type FilterQ = {
   limit?: number;
 };
 
+function asOid(id?: string) {
+  if (!id) return undefined;
+  return mongoose.isValidObjectId(id) ? new mongoose.Types.ObjectId(id) : id;
+}
+
 function scope(orgId: string, projectId: string, q: FilterQ) {
-  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), projectId };
-  if (q.environmentId) filter.environmentId = q.environmentId;
-  if (q.appId) filter.appId = q.appId;
+  const filter: Record<string, unknown> = {
+    taskflowOrganizationId: toOrgOid(orgId),
+    projectId: asOid(projectId),
+  };
+  const environmentId = asOid(q.environmentId);
+  const appId = asOid(q.appId);
+  if (environmentId) filter.environmentId = environmentId;
+  if (appId) filter.appId = appId;
   if (q.release) filter.release = q.release;
   if (q.from || q.to) {
     const ts: Record<string, Date> = {};
@@ -48,7 +59,7 @@ export async function overview(workspaceId: string | null | undefined, projectId
   await assertProjectInWorkspace(projectId, orgId);
   const orgOid = toOrgOid(orgId);
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const base = { taskflowOrganizationId: orgOid, projectId };
+  const base = { taskflowOrganizationId: orgOid, projectId: asOid(projectId) };
   const [logs, errors, live, tx, httpFails, vitals, upOk, upFail] = await Promise.all([
     MonitorLog.countDocuments({ ...base, timestamp: { $gte: since } }),
     MonitorErrorGroup.countDocuments({ ...base, status: 'open' }),
@@ -91,9 +102,9 @@ export async function listLogs(workspaceId: string | null | undefined, projectId
 export async function listErrorGroups(workspaceId: string | null | undefined, projectId: string, q: FilterQ & { status?: string }) {
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
-  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), projectId };
-  if (q.environmentId) filter.environmentId = q.environmentId;
-  if (q.appId) filter.appId = q.appId;
+  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), projectId: asOid(projectId) };
+  if (q.environmentId) filter.environmentId = asOid(q.environmentId);
+  if (q.appId) filter.appId = asOid(q.appId);
   if (q.status) filter.status = q.status;
   if (q.q) filter.message = { $regex: q.q, $options: 'i' };
   return MonitorErrorGroup.find(filter).sort({ lastSeen: -1 }).limit(cap(q.limit)).lean();
@@ -167,9 +178,9 @@ export async function listEvents(workspaceId: string | null | undefined, project
 export async function listReleases(workspaceId: string | null | undefined, projectId: string, q: FilterQ) {
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
-  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), projectId };
-  if (q.environmentId) filter.environmentId = q.environmentId;
-  if (q.appId) filter.appId = q.appId;
+  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), projectId: asOid(projectId) };
+  if (q.environmentId) filter.environmentId = asOid(q.environmentId);
+  if (q.appId) filter.appId = asOid(q.appId);
   return MonitorRelease.find(filter).sort({ firstSeen: -1 }).limit(cap(q.limit)).lean();
 }
 
@@ -177,7 +188,7 @@ export async function deviceBreakdown(workspaceId: string | null | undefined, pr
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
   const rows = await MonitorPresence.aggregate([
-    { $match: { taskflowOrganizationId: toOrgOid(orgId), projectId } },
+    { $match: { taskflowOrganizationId: toOrgOid(orgId), projectId: asOid(projectId) } },
     { $group: { _id: { $ifNull: ['$userAgent', 'unknown'] }, count: { $sum: 1 } } },
     { $sort: { count: -1 } },
     { $limit: 30 },
@@ -188,7 +199,7 @@ export async function deviceBreakdown(workspaceId: string | null | undefined, pr
 export async function listUptimeChecks(workspaceId: string | null | undefined, projectId: string) {
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
-  return MonitorUptimeCheck.find({ taskflowOrganizationId: toOrgOid(orgId), projectId }).sort({ name: 1 }).lean();
+  return MonitorUptimeCheck.find({ taskflowOrganizationId: toOrgOid(orgId), projectId: asOid(projectId) }).sort({ name: 1 }).lean();
 }
 
 export async function createUptimeCheck(
@@ -235,7 +246,7 @@ export async function listUptimeSamples(
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
-  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), projectId };
+  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId), projectId: asOid(projectId) };
   if (checkId) filter.checkId = checkId;
   return MonitorUptimeSample.find(filter).sort({ timestamp: -1 }).limit(100).lean();
 }

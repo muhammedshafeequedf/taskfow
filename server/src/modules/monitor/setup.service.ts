@@ -17,7 +17,7 @@ export function generateMonitorKey(): { plain: string; prefix: string; hash: str
 export async function assertProjectInWorkspace(projectId: string, workspaceId: string) {
   const orgId = requireWorkspaceId(workspaceId);
   const project = await MonitorProject.findOne({ _id: projectId, taskflowOrganizationId: orgId })
-    .select('_id name key')
+    .select('_id name key taskflowOrganizationId')
     .lean();
   if (!project) throw new ApiError(404, 'Monitor project not found');
   return project;

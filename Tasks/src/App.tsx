@@ -184,6 +184,7 @@ import MonitorWorkspace from './pages/monitor/MonitorWorkspace';
 import MonitorOverview from './pages/monitor/MonitorOverview';
 import MonitorSetup from './pages/monitor/MonitorSetup';
 import MonitorTelemetry from './pages/monitor/MonitorTelemetry';
+import MonitorAlerts from './pages/monitor/MonitorAlerts';
 
 function PortalResetPasswordRedirect() {
   const [params] = useSearchParams();
@@ -414,6 +415,7 @@ function AppRoutes() {
           <Route path="/monitor/:monitorProjectId" element={<MonitorWorkspace />}>
             <Route index element={<MonitorOverview />} />
             <Route path="setup" element={<MonitorSetup />} />
+            <Route path="alerts" element={<MonitorAlerts />} />
             <Route path="logs" element={<MonitorTelemetry />} />
             <Route path="errors" element={<MonitorTelemetry />} />
             <Route path="live" element={<MonitorTelemetry />} />

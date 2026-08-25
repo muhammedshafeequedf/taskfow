@@ -4,6 +4,7 @@ import { ApiError } from '../../utils/ApiError';
 import * as setup from './setup.service';
 import { ingestWithKey } from './ingest.service';
 import * as query from './query.service';
+import * as alerts from './alert.service';
 
 function ws(req: Request & { user?: AuthPayload; activeOrganizationId?: string }) {
   return req.activeOrganizationId;
@@ -210,5 +211,41 @@ export async function deleteUptime(req: Request & { user?: AuthPayload }, res: R
 export async function uptimeSamples(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
   const data = await query.listUptimeSamples(ws(req), req.params.projectId, req.query.checkId as string | undefined);
+  res.json({ success: true, data });
+}
+
+export async function listAlerts(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await alerts.listAlertRules(ws(req), req.params.projectId);
+  res.json({ success: true, data });
+}
+
+export async function createAlert(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await alerts.createAlertRule(ws(req), req.params.projectId, (req.body ?? {}) as Record<string, unknown>);
+  res.status(201).json({ success: true, data });
+}
+
+export async function updateAlert(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await alerts.updateAlertRule(ws(req), req.params.projectId, req.params.alertId, (req.body ?? {}) as Record<string, unknown>);
+  res.json({ success: true, data });
+}
+
+export async function deleteAlert(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await alerts.deleteAlertRule(ws(req), req.params.projectId, req.params.alertId);
+  res.json({ success: true, data });
+}
+
+export async function testAlert(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await alerts.testAlertRule(ws(req), req.params.projectId, req.params.alertId);
+  res.json({ success: true, data });
+}
+
+export async function alertDeliveries(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await alerts.listAlertDeliveries(ws(req), req.params.projectId, req.query.ruleId as string | undefined);
   res.json({ success: true, data });
 }

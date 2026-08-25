@@ -339,6 +339,7 @@ export const TASK_FLOW_PERMISSIONS = {
       UPTIME: { READ: 'taskflow.monitor.uptime.read', MANAGE: 'taskflow.monitor.uptime.manage' },
       RELEASE: { READ: 'taskflow.monitor.release.read' },
       EVENT: { READ: 'taskflow.monitor.event.read' },
+      ALERT: { READ: 'taskflow.monitor.alert.read', MANAGE: 'taskflow.monitor.alert.manage' },
     },
   },
 } as const;

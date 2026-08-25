@@ -11,6 +11,7 @@ import {
   MonitorVital,
 } from './monitor.models';
 import { emitLive, rateLimitKey, resolveAppByKey } from './setup.service';
+import { evaluateMonitorAlerts } from './alert.service';
 import { ApiError } from '../../utils/ApiError';
 
 function fingerprint(type: string, message: string, stack?: string): string {
@@ -25,8 +26,8 @@ async function noteRelease(app: {
   environmentId: unknown;
 }, version?: string) {
   const v = String(version || '').trim();
-  if (!v) return;
-  await MonitorRelease.updateOne(
+  if (!v) return false;
+  const res = await MonitorRelease.updateOne(
     { appId: app._id, version: v },
     {
       $setOnInsert: {
@@ -40,6 +41,7 @@ async function noteRelease(app: {
     },
     { upsert: true }
   );
+  return res.upsertedCount > 0;
 }
 
 export async function ingestWithKey(plainKey: string, kind: string, body: Record<string, unknown>) {
@@ -69,6 +71,14 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
       timestamp: body.timestamp ? new Date(String(body.timestamp)) : new Date(),
     });
     emitLive(projectId, envId, 'log', doc.toObject());
+    evaluateMonitorAlerts({
+      kind: 'logs',
+      orgId: String(app.taskflowOrganizationId),
+      projectId,
+      environmentId: envId,
+      appId: String(app._id),
+      fields: { message, level: String(doc.level), release: release || '' },
+    });
     return { ok: true, id: String(doc._id) };
   }
 
@@ -88,7 +98,7 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
       breadcrumbs: Array.isArray(body.breadcrumbs) ? body.breadcrumbs.slice(0, 50) : [],
       userAgent: body.userAgent ? String(body.userAgent).slice(0, 500) : undefined,
     });
-    await MonitorErrorGroup.findOneAndUpdate(
+    const group = await MonitorErrorGroup.findOneAndUpdate(
       { appId: app._id, fingerprint: fp },
       {
         $setOnInsert: {
@@ -104,9 +114,18 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
         $set: { lastSeen: new Date(), sampleStack: stack },
         $inc: { count: 1 },
       },
-      { upsert: true }
+      { upsert: true, new: true }
     );
     emitLive(projectId, envId, 'error', { fingerprint: fp, message });
+    evaluateMonitorAlerts({
+      kind: 'errors',
+      orgId: String(app.taskflowOrganizationId),
+      projectId,
+      environmentId: envId,
+      appId: String(app._id),
+      isNewErrorGroup: (group?.count ?? 0) === 1,
+      fields: { message, type, release: release || '', fingerprint: fp },
+    });
     return { ok: true, id: String(ev._id), fingerprint: fp };
   }
 
@@ -142,6 +161,14 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
       release,
     });
     emitLive(projectId, envId, 'transaction', { name, durationMs: doc.durationMs });
+    evaluateMonitorAlerts({
+      kind: 'transactions',
+      orgId: String(app.taskflowOrganizationId),
+      projectId,
+      environmentId: envId,
+      appId: String(app._id),
+      fields: { name, durationMs: String(doc.durationMs), status: String(doc.status || ''), release: release || '', message: name },
+    });
     return { ok: true, id: String(doc._id) };
   }
 
@@ -158,6 +185,21 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
       release,
     });
     emitLive(projectId, envId, 'http', { url, status: doc.status });
+    evaluateMonitorAlerts({
+      kind: 'http',
+      orgId: String(app.taskflowOrganizationId),
+      projectId,
+      environmentId: envId,
+      appId: String(app._id),
+      fields: {
+        url,
+        method: String(doc.method),
+        status: String(doc.status ?? ''),
+        durationMs: String(doc.durationMs ?? ''),
+        message: url,
+        release: release || '',
+      },
+    });
     return { ok: true, id: String(doc._id) };
   }
 
@@ -171,6 +213,14 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
       release,
     });
     emitLive(projectId, envId, 'vital', { name, value: doc.value });
+    evaluateMonitorAlerts({
+      kind: 'vitals',
+      orgId: String(app.taskflowOrganizationId),
+      projectId,
+      environmentId: envId,
+      appId: String(app._id),
+      fields: { vitalName: name, vitalValue: String(doc.value), message: `${name}=${doc.value}`, release: release || '' },
+    });
     return { ok: true, id: String(doc._id) };
   }
 
@@ -184,13 +234,31 @@ export async function ingestWithKey(plainKey: string, kind: string, body: Record
       release,
     });
     emitLive(projectId, envId, 'event', { name });
+    evaluateMonitorAlerts({
+      kind: 'events',
+      orgId: String(app.taskflowOrganizationId),
+      projectId,
+      environmentId: envId,
+      appId: String(app._id),
+      fields: { eventName: name, name, message: name, release: release || '' },
+    });
     return { ok: true, id: String(doc._id) };
   }
 
   if (kind === 'releases') {
     const version = String(body.version ?? body.release ?? '').trim();
     if (!version) throw new ApiError(400, 'version is required');
-    await noteRelease(app, version);
+    const isNew = await noteRelease(app, version);
+    if (isNew) {
+      evaluateMonitorAlerts({
+        kind: 'releases',
+        orgId: String(app.taskflowOrganizationId),
+        projectId,
+        environmentId: envId,
+        appId: String(app._id),
+        fields: { release: version, version, message: version },
+      });
+    }
     return { ok: true, version };
   }
 
