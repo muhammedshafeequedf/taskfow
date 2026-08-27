@@ -20,7 +20,7 @@ export async function listActivities(
     completed?: string;
     userId?: string;
   }
-) {
+): Promise<Array<Record<string, unknown>>> {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (opts.relatedType) filter.relatedType = opts.relatedType;
@@ -71,7 +71,7 @@ export async function listActivities(
           : r.relatedType === 'account'
             ? accountMap.get(String(r.relatedId))
             : undefined,
-  }));
+  })) as Array<Record<string, unknown>>;
 }
 
 export async function createActivity(
