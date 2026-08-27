@@ -1,5 +1,11 @@
 import { APP_VERSION } from '../appVersion';
 
+/**
+ * Browser self-reporting is OFF unless explicitly enabled.
+ * VITE_MONITOR_KEY is always public in the SPA bundle — treat it as untrusted.
+ * Prefer server-side MONITOR_KEY for production telemetry.
+ */
+const MONITOR_ENABLED = String(import.meta.env.VITE_MONITOR_ENABLED || '').toLowerCase() === 'true';
 const MONITOR_BASE = String(
   import.meta.env.VITE_MONITOR_BASE_URL || 'https://taskflow.repod.online/api'
 ).replace(/\/+$/, '');
@@ -7,7 +13,7 @@ const MONITOR_KEY = String(import.meta.env.VITE_MONITOR_KEY || '').trim();
 const RELEASE = String(import.meta.env.VITE_MONITOR_RELEASE || APP_VERSION || '').trim();
 
 export function isMonitorClientEnabled() {
-  return Boolean(MONITOR_BASE && MONITOR_KEY);
+  return Boolean(MONITOR_ENABLED && MONITOR_BASE && MONITOR_KEY);
 }
 
 export function skipClientHttp(url: string) {
@@ -63,6 +69,8 @@ export function monitorHttp(input: {
   durationMs?: number;
 }) {
   if (skipClientHttp(input.url)) return;
+  // Only report failures from the browser — reduces key-abuse noise if key leaks
+  if ((input.status ?? 0) < 400 && (input.durationMs ?? 0) < 3000) return;
   monitorIngest('http', { ...input, direction: 'out' });
 }
 

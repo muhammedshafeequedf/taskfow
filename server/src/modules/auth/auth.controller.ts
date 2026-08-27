@@ -3,6 +3,7 @@ import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { ApiError } from '../../utils/ApiError';
 import { authMiddleware } from '../../middleware/auth.middleware';
+import { requirePlatformAdmin } from '../../middleware/requireTaskflowUser';
 import { logAudit } from '../auditLogs/logAudit';
 import * as analyticsService from '../analytics/analytics.service';
 import {
@@ -233,6 +234,7 @@ export const meHandler = [
 
 export const debugPermissionsHandler = [
   authMiddleware,
+  requirePlatformAdmin,
   asyncHandler(debugPermissions),
 ];
 

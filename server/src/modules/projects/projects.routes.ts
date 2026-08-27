@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission } from '../../middleware/requirePermission';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { requireProjectPermission } from '../../middleware/requireProjectPermission';
 import {
   createProjectHandler,
@@ -44,6 +45,7 @@ import { PROJECT_PERMISSIONS, TASK_FLOW_PERMISSIONS } from '../../shared/constan
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireTaskflowUser);
 
 router.get('/', asyncHandler(getProjects));
 router.post('/', requirePermission(TASK_FLOW_PERMISSIONS.PROJECT.PROJECT.CREATE), createProjectHandler);

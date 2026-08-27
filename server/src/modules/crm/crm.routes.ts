@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission, requireAnyPermission } from '../../middleware/requirePermission';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as crm from './crm.controller';
@@ -9,6 +10,7 @@ const P = TASK_FLOW_PERMISSIONS.TASKFLOW.CRM;
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireTaskflowUser);
 
 router.get('/dashboard', requirePermission(P.REPORT.READ), asyncHandler(crm.getDashboard));
 router.get('/executive-metrics', requirePermission(P.REPORT.READ), asyncHandler(crm.getExecutiveMetrics));

@@ -12,12 +12,13 @@ import {
   mapLegacyProjectOrGlobalPermissions,
 } from '../shared/constants/legacyPermissionMap';
 
-export type ProjectIdSource = { param?: string; query?: string };
+export type ProjectIdSource = { param?: string; query?: string; body?: string };
 
 const DEFAULT_PROJECT_ID_SOURCES = [
   { param: 'projectId' },
   { param: 'id' },
   { query: 'project' },
+  { body: 'project' },
 ];
 
 const PROJECT_FULL_ACCESS = [
@@ -69,6 +70,10 @@ export function requireProjectPermission(
       }
       if (src.query && req.query[src.query]) {
         projectId = String(req.query[src.query]);
+        break;
+      }
+      if (src.body && req.body && typeof req.body === 'object' && (req.body as Record<string, unknown>)[src.body]) {
+        projectId = String((req.body as Record<string, unknown>)[src.body]);
         break;
       }
     }

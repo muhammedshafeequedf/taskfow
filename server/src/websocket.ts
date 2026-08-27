@@ -3,8 +3,32 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { env } from './config/env';
 import { toAppRelativeUrl } from './utils/notificationUrl';
+import { ProjectMember } from './modules/projects/projectMember.model';
+import { MonitorProject } from './modules/monitor/monitor.models';
+import { OrganizationMember } from './modules/organizations/organizationMember.model';
+import { User } from './modules/auth/user.model';
 
 let io: Server | null = null;
+
+async function canSubscribeProject(userId: string, projectId: string): Promise<boolean> {
+  const user = await User.findById(userId).select('role').lean();
+  if (user?.role === 'admin') return true;
+  const member = await ProjectMember.exists({ project: projectId, user: userId });
+  return Boolean(member);
+}
+
+async function canSubscribeMonitor(userId: string, projectId: string): Promise<boolean> {
+  const user = await User.findById(userId).select('role').lean();
+  if (user?.role === 'admin') return true;
+  const project = await MonitorProject.findById(projectId).select('taskflowOrganizationId').lean();
+  if (!project?.taskflowOrganizationId) return false;
+  const member = await OrganizationMember.exists({
+    organization: project.taskflowOrganizationId,
+    user: userId,
+    status: 'active',
+  });
+  return Boolean(member);
+}
 
 export function initWebSocket(server: HttpServer): void {
   const socketAllowedOrigins = Array.from(
@@ -19,8 +43,8 @@ export function initWebSocket(server: HttpServer): void {
     cors: {
       origin: (origin, cb) => {
         if (!origin) return cb(null, true);
-        if (socketAllowedOrigins.length === 0) return cb(null, true);
         if (socketAllowedOrigins.includes(origin)) return cb(null, true);
+        if (socketAllowedOrigins.length === 0 && env.nodeEnv !== 'production') return cb(null, true);
         return cb(new Error(`Socket CORS blocked for origin: ${origin}`));
       },
       methods: ['GET', 'POST'],
@@ -37,8 +61,9 @@ export function initWebSocket(server: HttpServer): void {
       return next(new Error('Authentication required'));
     }
     try {
-      const decoded = jwt.verify(token, env.jwtSecret) as { sub?: string };
+      const decoded = jwt.verify(token, env.jwtSecret) as { sub?: string; userType?: string };
       if (!decoded.sub) return next(new Error('Invalid token'));
+      if (decoded.userType === 'customer') return next(new Error('Staff access required'));
       (socket as Socket & { userId: string }).userId = decoded.sub;
       next();
     } catch {
@@ -51,9 +76,10 @@ export function initWebSocket(server: HttpServer): void {
     if (userId) socket.join(userId);
 
     socket.on('subscribe:project', (projectId: string) => {
-      if (projectId && typeof projectId === 'string') {
-        socket.join(`project:${projectId}`);
-      }
+      if (!projectId || typeof projectId !== 'string' || !userId) return;
+      void canSubscribeProject(userId, projectId).then((ok) => {
+        if (ok) socket.join(`project:${projectId}`);
+      });
     });
 
     socket.on('unsubscribe:project', (projectId: string) => {
@@ -64,10 +90,12 @@ export function initWebSocket(server: HttpServer): void {
 
     socket.on('subscribe:monitor', (payload: { projectId?: string; environmentId?: string }) => {
       const projectId = payload?.projectId;
-      if (projectId && typeof projectId === 'string') {
+      if (!projectId || typeof projectId !== 'string' || !userId) return;
+      void canSubscribeMonitor(userId, projectId).then((ok) => {
+        if (!ok) return;
         socket.join(`monitor:${projectId}`);
         if (payload.environmentId) socket.join(`monitor:${projectId}:${payload.environmentId}`);
-      }
+      });
     });
   });
 }
@@ -99,7 +127,12 @@ export function notifyMonitorEvent(
 
 export function notifyPush(
   userId: string,
-  payload: { title: string; body?: string; url?: string; data?: Record<string, unknown> }
+  payload: { title: string; body?: string; url?: string }
 ): void {
-  if (io) io.to(userId).emit('notification:push', { ...payload, url: toAppRelativeUrl(payload.url) });
+  if (io) {
+    io.to(userId).emit('push:notify', {
+      ...payload,
+      url: payload.url ? toAppRelativeUrl(payload.url) : undefined,
+    });
+  }
 }

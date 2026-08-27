@@ -14,6 +14,7 @@ import {
 import { assertProjectInWorkspace } from './setup.service';
 import { requireWorkspaceId, toOrgOid } from '../crm/crmWorkspace';
 import { ApiError } from '../../utils/ApiError';
+import { assertSafeOutboundUrl, escapeRegex } from '../../utils/safeUrl';
 
 type FilterQ = {
   environmentId?: string;
@@ -95,7 +96,7 @@ export async function listLogs(workspaceId: string | null | undefined, projectId
   await assertProjectInWorkspace(projectId, orgId);
   const filter = scope(orgId, projectId, q);
   if (q.level) filter.level = q.level;
-  if (q.q) filter.message = { $regex: q.q, $options: 'i' };
+  if (q.q) filter.message = { $regex: escapeRegex(q.q), $options: 'i' };
   return MonitorLog.find(filter).sort({ timestamp: -1 }).limit(cap(q.limit)).lean();
 }
 
@@ -106,7 +107,7 @@ export async function listErrorGroups(workspaceId: string | null | undefined, pr
   if (q.environmentId) filter.environmentId = asOid(q.environmentId);
   if (q.appId) filter.appId = asOid(q.appId);
   if (q.status) filter.status = q.status;
-  if (q.q) filter.message = { $regex: q.q, $options: 'i' };
+  if (q.q) filter.message = { $regex: escapeRegex(q.q), $options: 'i' };
   return MonitorErrorGroup.find(filter).sort({ lastSeen: -1 }).limit(cap(q.limit)).lean();
 }
 
@@ -157,7 +158,7 @@ export async function listHttp(workspaceId: string | null | undefined, projectId
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
   const filter = scope(orgId, projectId, q);
-  if (q.q) filter.url = { $regex: q.q, $options: 'i' };
+  if (q.q) filter.url = { $regex: escapeRegex(q.q), $options: 'i' };
   return MonitorHttpCall.find(filter).sort({ timestamp: -1 }).limit(cap(q.limit)).lean();
 }
 
@@ -171,7 +172,7 @@ export async function listEvents(workspaceId: string | null | undefined, project
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
   const filter = scope(orgId, projectId, q);
-  if (q.q) filter.name = { $regex: q.q, $options: 'i' };
+  if (q.q) filter.name = { $regex: escapeRegex(q.q), $options: 'i' };
   return MonitorCustomEvent.find(filter).sort({ timestamp: -1 }).limit(cap(q.limit)).lean();
 }
 
@@ -209,9 +210,14 @@ export async function createUptimeCheck(
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   await assertProjectInWorkspace(projectId, orgId);
-  const url = String(input.url ?? '').trim();
+  let url: string;
+  try {
+    url = assertSafeOutboundUrl(String(input.url ?? ''), 'Uptime URL');
+  } catch (err) {
+    throw new ApiError(400, err instanceof Error ? err.message : 'Invalid uptime URL');
+  }
   const name = String(input.name ?? url).trim();
-  if (!url || !name) throw new ApiError(400, 'name and url are required');
+  if (!name) throw new ApiError(400, 'name and url are required');
   const doc = await MonitorUptimeCheck.create({
     taskflowOrganizationId: toOrgOid(orgId),
     projectId,

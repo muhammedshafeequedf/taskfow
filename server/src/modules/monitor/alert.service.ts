@@ -11,6 +11,8 @@ import {
 import { MonitorApp, MonitorEnvironment } from './monitor.models';
 import { assertProjectInWorkspace } from './setup.service';
 import { requireWorkspaceId } from '../crm/crmWorkspace';
+import { OrganizationMember } from '../organizations/organizationMember.model';
+import { User } from '../auth/user.model';
 import { ApiError } from '../../utils/ApiError';
 import { env } from '../../config/env';
 import {
@@ -52,6 +54,25 @@ function parseEmails(raw: unknown): string[] {
   const out = [...new Set(list.map((s) => s.trim().toLowerCase()).filter((s) => EMAIL_RE.test(s)))];
   if (out.length > 20) throw new ApiError(400, 'At most 20 recipient emails');
   return out;
+}
+
+/** Only allow alerting emails that belong to active workspace members (or platform admins). */
+async function assertRecipientsInWorkspace(workspaceId: string, recipients: string[]) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const members = await OrganizationMember.find({ organization: orgId, status: 'active' })
+    .select('user')
+    .lean();
+  const userIds = members.map((m) => m.user);
+  const users = await User.find({
+    $or: [{ _id: { $in: userIds } }, { role: 'admin' }],
+  })
+    .select('email')
+    .lean();
+  const allowed = new Set(users.map((u) => String(u.email || '').toLowerCase()).filter(Boolean));
+  const rejected = recipients.filter((e) => !allowed.has(e));
+  if (rejected.length) {
+    throw new ApiError(400, `Recipients must be workspace members: ${rejected.join(', ')}`);
+  }
 }
 
 function applyTemplate(tpl: string, vars: Record<string, string>) {
@@ -309,6 +330,7 @@ export async function createAlertRule(
 ) {
   const project = await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   const body = normalizeRuleBody(input);
+  await assertRecipientsInWorkspace(requireWorkspaceId(workspaceId), body.recipients);
   const doc = await MonitorAlertRule.create({
     taskflowOrganizationId: (project as { taskflowOrganizationId: unknown }).taskflowOrganizationId,
     projectId,
@@ -325,6 +347,7 @@ export async function updateAlertRule(
 ) {
   await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   const body = normalizeRuleBody(input);
+  await assertRecipientsInWorkspace(requireWorkspaceId(workspaceId), body.recipients);
   const doc = await MonitorAlertRule.findOneAndUpdate(
     { _id: alertId, projectId },
     { $set: { ...body, environmentId: body.environmentId ?? null, appId: body.appId ?? null } },

@@ -5,6 +5,7 @@ import { CrmLead } from '../models/crmLead.model';
 import { ApiError } from '../../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 import { notifyUser } from '../../notifications/notificationDispatch.service';
+import { assertSafeOutboundUrl } from '../../../utils/safeUrl';
 
 export async function listWebhooks(workspaceId: string | null | undefined) {
   const orgId = requireWorkspaceId(workspaceId);
@@ -16,10 +17,16 @@ export async function listWebhooks(workspaceId: string | null | undefined) {
 
 export async function createWebhook(workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
+  let url: string;
+  try {
+    url = assertSafeOutboundUrl(String(input.url ?? ''), 'Webhook URL');
+  } catch (err) {
+    throw new ApiError(400, err instanceof Error ? err.message : 'Invalid webhook URL');
+  }
   const doc = await CrmWebhook.create({
     taskflowOrganizationId: toOrgOid(orgId),
     name: String(input.name ?? 'Webhook').trim(),
-    url: String(input.url ?? '').trim(),
+    url,
     events: input.events ?? [],
     secret: crypto.randomBytes(24).toString('hex'),
     enabled: true,
@@ -47,12 +54,18 @@ export async function dispatchWebhook(
   }).lean();
   await Promise.allSettled(
     hooks.map(async (hook) => {
+      try {
+        assertSafeOutboundUrl(hook.url, 'Webhook URL');
+      } catch {
+        return;
+      }
       const body = JSON.stringify({ event, payload, timestamp: new Date().toISOString() });
       const sig = crypto.createHmac('sha256', hook.secret).update(body).digest('hex');
       await fetch(hook.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-TaskFlow-Signature': sig },
         body,
+        signal: AbortSignal.timeout(10000),
       });
     })
   );

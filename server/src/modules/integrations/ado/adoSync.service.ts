@@ -182,7 +182,15 @@ export async function handleAdoWebhook(
   if (!integration || !integration.enabled) {
     return { handled: false };
   }
-  if (integration.webhookSecret !== secret) {
+  const expected = String(integration.webhookSecret ?? '');
+  const provided = String(secret ?? '');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(provided);
+  const ok =
+    a.length > 0 &&
+    a.length === b.length &&
+    crypto.timingSafeEqual(a, b);
+  if (!ok) {
     throw new Error('Invalid webhook secret');
   }
 

@@ -68,7 +68,9 @@ export async function authMiddleware(
         id: customerUser._id.toString(),
         email: customerUser.email,
         name: customerUser.name,
-        role: customerUser.isOrgAdmin ? 'admin' : 'user', // Mapping customer admin to 'admin' role string for generic checks
+        // Never map customer org admins to platform 'admin'
+        role: customerUser.isOrgAdmin ? 'customer_org_admin' : 'customer_user',
+        userType: 'customer',
         permissions,
         mustChangePassword: customerUser.mustChangePassword,
       } as AuthPayload;
@@ -123,6 +125,7 @@ export async function authMiddleware(
       roleId: roleIdStr,
       permissions,
       mustChangePassword: user.mustChangePassword ?? false,
+      userType: 'taskflow',
     } as AuthPayload;
 
     const userOid = user._id;

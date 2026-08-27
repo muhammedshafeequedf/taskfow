@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requireAnyPermission } from '../../middleware/requirePermission';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 import * as ctrl from './monitor.controller';
@@ -16,6 +17,7 @@ const manageAlert = [M.ALERT.MANAGE];
 
 const staff = Router();
 staff.use(authMiddleware);
+staff.use(requireTaskflowUser);
 staff.use((_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   next();

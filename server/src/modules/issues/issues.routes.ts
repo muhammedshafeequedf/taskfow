@@ -34,7 +34,8 @@ import {
 } from './issues.controller';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { PROJECT_PERMISSIONS } from '../../shared/constants/permissions';
-import { requireIssuePermission } from '../../middleware/requireIssuePermission';
+import { requireIssuePermission, requireProjectPermissionFromBody } from '../../middleware/requireIssuePermission';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import {
   listStageEstimates,
   getEstimateSummary,
@@ -48,6 +49,7 @@ import { stageEstimatesValidation } from '../stageEstimates/stageEstimate.valida
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireTaskflowUser);
 
 router.get('/', asyncHandler(getIssues));
 router.get('/quick-filters/counts', asyncHandler(getQuickFilterCounts));
@@ -57,7 +59,7 @@ router.get('/search-global', ...searchGlobalQueryHandler);
 router.get('/by-key', byKeyQueryHandler, asyncHandler(getIssueByKey));
 router.get('/export', ...exportIssuesHandler);
 router.get('/watching-status', asyncHandler(getWatchingStatusBatch));
-router.post('/', createIssueHandler);
+router.post('/', requireProjectPermissionFromBody(PROJECT_PERMISSIONS.ISSUE.ISSUE.CREATE), ...createIssueHandler);
 router.patch('/bulk', bulkUpdateHandler);
 router.delete('/bulk', bulkDeleteHandler);
 router.put('/backlog-order', ...backlogOrderHandler);

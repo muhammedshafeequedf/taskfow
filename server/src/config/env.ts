@@ -16,7 +16,7 @@ export const env = {
   port: parseInt(process.env.PORT ?? '5000', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
   mongodbUri: process.env.MONGODB_URI ?? 'mongodb://localhost:27017/pm-tool',
-  jwtSecret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
+  jwtSecret: cleanEnvValue(process.env.JWT_SECRET) || (process.env.NODE_ENV === 'production' ? '' : 'dev-secret-change-me'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   integrationEncryptionKey: cleanEnvValue(process.env.INTEGRATION_ENCRYPTION_KEY),
   appUrl: process.env.APP_URL ?? 'http://localhost:5174',
@@ -200,6 +200,13 @@ function assertRequiredWhenEnabled(enabled: boolean, integration: string, requir
  * Call once at startup.
  */
 export function validateRuntimeConfig(): void {
+  if (!env.jwtSecret || env.jwtSecret === 'dev-secret-change-me') {
+    if (env.nodeEnv === 'production') {
+      throw new Error('[config] JWT_SECRET must be set to a strong secret in production');
+    }
+    console.warn('[config] JWT_SECRET is using the insecure development default — set JWT_SECRET before production.');
+  }
+
   assertRequiredWhenEnabled(env.isSmtpEnabled, 'SMTP', [
     ['SMTP_HOST', env.smtpHost],
     ['SMTP_PORT', env.smtpPort ? String(env.smtpPort) : ''],

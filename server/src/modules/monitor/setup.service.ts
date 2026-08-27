@@ -103,8 +103,15 @@ export async function resolveAppByKey(plain: string) {
 }
 
 const rate = new Map<string, { n: number; t: number }>();
-export function rateLimitKey(hash: string, max = 120, windowMs = 10_000): boolean {
+/** Best-effort per-process ingest limiter. Prefer edge/WAF limits in multi-instance deploys. */
+export function rateLimitKey(hash: string, max = 60, windowMs = 10_000): boolean {
   const now = Date.now();
+  // Periodic cleanup to avoid unbounded growth
+  if (rate.size > 5000) {
+    for (const [k, v] of rate) {
+      if (now - v.t > windowMs * 2) rate.delete(k);
+    }
+  }
   const cur = rate.get(hash);
   if (!cur || now - cur.t > windowMs) {
     rate.set(hash, { n: 1, t: now });

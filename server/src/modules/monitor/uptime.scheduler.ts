@@ -1,5 +1,6 @@
 import { MonitorUptimeCheck, MonitorUptimeSample } from './monitor.models';
 import { evaluateMonitorAlerts } from './alert.service';
+import { assertSafeOutboundUrl } from '../../utils/safeUrl';
 
 async function runCheck(check: {
   _id: unknown;
@@ -15,8 +16,10 @@ async function runCheck(check: {
   let status: number | undefined;
   let error: string | undefined;
   try {
-    const res = await fetch(check.url, {
+    const safeUrl = assertSafeOutboundUrl(check.url, 'Uptime URL');
+    const res = await fetch(safeUrl, {
       method: check.method === 'HEAD' ? 'HEAD' : 'GET',
+      redirect: 'error',
       signal: AbortSignal.timeout(15000),
     });
     status = res.status;

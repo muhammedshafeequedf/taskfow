@@ -6,6 +6,8 @@ export interface AuthPayload {
   roleId?: string;
   permissions: string[];
   mustChangePassword: boolean;
+  /** Distinguishes staff JWT from customer-portal JWT when both use authMiddleware. */
+  userType?: 'taskflow' | 'customer';
 }
 
 export interface CustomerAuthPayload {

@@ -56,5 +56,5 @@ export function requireIssuePermission(permission: string, issueIdParam = 'id') 
 
 /** For create issue — body.project is required. */
 export function requireProjectPermissionFromBody(permission: string, bodyField = 'project') {
-  return requireProjectPermission(permission, { param: bodyField });
+  return requireProjectPermission(permission, { body: bodyField });
 }

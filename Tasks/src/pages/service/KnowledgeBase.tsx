@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useAuth } from '../../contexts/AuthContext';
 import { serviceApi, type KbArticle } from '../../lib/api';
 
@@ -22,7 +23,9 @@ export default function KnowledgeBase() {
     }
   };
 
-  useEffect(() => { load(); }, [token, search]);
+  useEffect(() => {
+    load();
+  }, [token, search]);
 
   const create = async () => {
     if (!token || !title.trim() || !body.trim()) return;
@@ -33,16 +36,16 @@ export default function KnowledgeBase() {
   };
 
   return (
-    <div className="p-8">
-      <h1 className="text-xl font-semibold mb-4">Knowledge base</h1>
+    <div className="p-6 max-w-4xl mx-auto">
+      <h1 className="text-xl font-semibold mb-4">Knowledge Base</h1>
       <input
-        className="mb-4 w-full max-w-md rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] px-3 py-2 text-sm"
+        className="w-full mb-3 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm"
         placeholder="Search articles…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
-      <div className="mb-6 rounded-2xl border border-[color:var(--border-subtle)] p-4">
-        <h2 className="font-medium mb-2 text-sm">New article</h2>
+      <div className="mb-6 rounded-xl border border-[color:var(--border-subtle)] p-4">
+        <h2 className="text-sm font-medium mb-2">New article</h2>
         <input
           className="w-full mb-2 rounded-lg border border-[color:var(--border-subtle)] px-3 py-2 text-sm"
           placeholder="Title"
@@ -63,8 +66,19 @@ export default function KnowledgeBase() {
         {articles.map((a) => (
           <article key={a._id} className="rounded-xl border border-[color:var(--border-subtle)] p-4">
             <h3 className="font-medium">{a.title}</h3>
-            <p className="text-xs text-[color:var(--text-muted)] mb-2">{a.category} · {a.published ? 'Published' : 'Draft'}</p>
-            <div className="text-sm prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: a.body }} />
+            <p className="text-xs text-[color:var(--text-muted)] mb-2">
+              {a.category} · {a.published ? 'Published' : 'Draft'}
+            </p>
+            <div
+              className="text-sm prose prose-invert max-w-none"
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(a.body, {
+                  USE_PROFILES: { html: true },
+                  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+                  FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+                }),
+              }}
+            />
           </article>
         ))}
       </div>

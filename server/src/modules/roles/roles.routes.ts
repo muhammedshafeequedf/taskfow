@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission } from '../../middleware/requirePermission';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import {
   getRolesHandler,
   getRoleByIdHandler,
@@ -17,6 +18,7 @@ const router = Router();
 router.get('/permissions', getPermissionsHandler);
 
 router.use(authMiddleware);
+router.use(requireTaskflowUser);
 router.use(requirePermission(TASK_FLOW_PERMISSIONS.AUTH.ROLE.MANAGE_ALL));
 
 router.get('/', getRolesHandler);

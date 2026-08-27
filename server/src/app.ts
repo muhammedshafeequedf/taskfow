@@ -2,7 +2,6 @@ import express from 'express';
 import passport from 'passport';
 import cors from 'cors';
 import helmet from 'helmet';
-import path from 'path';
 import { apiRoutes } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import morgan from 'morgan';
@@ -30,10 +29,13 @@ const allowedOrigins = Array.from(
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Allow same-origin / non-browser requests.
+      // Allow same-origin / non-browser requests (curl, server-to-server).
       if (!origin) return cb(null, true);
-      if (allowedOrigins.length === 0) return cb(null, true);
+      // Always allow configured frontends; never open CORS when unset in production.
       if (allowedOrigins.includes(origin)) return cb(null, true);
+      if (allowedOrigins.length === 0 && env.nodeEnv !== 'production') {
+        return cb(null, true);
+      }
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -70,7 +72,6 @@ app.use((req, res, next) => {
   next();
 });
 app.use(morgan('dev'));
-app.use('/api/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api', apiRoutes);
 
 app.use(errorHandler);

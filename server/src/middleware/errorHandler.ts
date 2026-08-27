@@ -19,9 +19,10 @@ export function errorHandler(
 
   if (err instanceof Error) {
     monitorError(err);
+    console.error('[errorHandler]', err);
     res.status(500).json({
       success: false,
-      message: err.message || 'Internal server error',
+      message: 'Internal server error',
     });
     return;
   }

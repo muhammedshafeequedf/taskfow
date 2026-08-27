@@ -10,4 +10,5 @@ interface ImportMetaEnv {
   readonly VITE_MONITOR_BASE_URL?: string;
   readonly VITE_MONITOR_KEY?: string;
   readonly VITE_MONITOR_RELEASE?: string;
+  readonly VITE_MONITOR_ENABLED?: string;
 }

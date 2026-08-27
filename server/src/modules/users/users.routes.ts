@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware';
 import { requirePermission } from '../../middleware/requirePermission';
+import { requireTaskflowUser } from '../../middleware/requireTaskflowUser';
 import {
   getUsers,
   getUserById,
@@ -15,9 +16,10 @@ import { TASK_FLOW_PERMISSIONS } from '../../shared/constants/permissions';
 const router = Router();
 
 router.use(authMiddleware);
+router.use(requireTaskflowUser);
 
 router.get('/', requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.LIST), asyncHandler(getUsers));
-router.get('/:id', ...userIdParamHandler, asyncHandler(getUserById));
+router.get('/:id', ...userIdParamHandler, requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.READ), asyncHandler(getUserById));
 router.post('/invite', requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.CREATE), ...inviteUserHandler);
 router.patch('/:id', requirePermission(TASK_FLOW_PERMISSIONS.AUTH.USER.UPDATE), updateUserHandler);
 router.patch(

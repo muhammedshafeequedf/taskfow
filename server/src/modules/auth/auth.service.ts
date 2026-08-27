@@ -206,7 +206,7 @@ export async function register(input: RegisterInput): Promise<{ user: AuthUser; 
     // User model hashes password in pre-save hook.
     password: input.password,
     name: input.name,
-    role: input.role ?? 'user',
+    role: 'user',
     permissions: mergeTaskflowPermissionFloor([]),
   });
 
