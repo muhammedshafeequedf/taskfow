@@ -24,8 +24,14 @@ function monitorKey(req: Request): string {
   return '';
 }
 
+function param(req: Request, name: string): string {
+  const v = req.params[name];
+  if (!v) throw new ApiError(400, `${name} is required`);
+  return v;
+}
+
 export async function ingest(req: Request, res: Response) {
-  const kind = req.params.kind;
+  const kind = param(req, 'kind');
   const data = await ingestWithKey(monitorKey(req), kind, (req.body ?? {}) as Record<string, unknown>);
   res.json({ success: true, data });
 }
@@ -216,36 +222,41 @@ export async function uptimeSamples(req: Request & { user?: AuthPayload }, res: 
 
 export async function listAlerts(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await alerts.listAlertRules(ws(req), req.params.projectId);
+  const data = await alerts.listAlertRules(ws(req), param(req, 'projectId'));
   res.json({ success: true, data });
 }
 
 export async function createAlert(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await alerts.createAlertRule(ws(req), req.params.projectId, (req.body ?? {}) as Record<string, unknown>);
+  const data = await alerts.createAlertRule(ws(req), param(req, 'projectId'), (req.body ?? {}) as Record<string, unknown>);
   res.status(201).json({ success: true, data });
 }
 
 export async function updateAlert(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await alerts.updateAlertRule(ws(req), req.params.projectId, req.params.alertId, (req.body ?? {}) as Record<string, unknown>);
+  const data = await alerts.updateAlertRule(
+    ws(req),
+    param(req, 'projectId'),
+    param(req, 'alertId'),
+    (req.body ?? {}) as Record<string, unknown>
+  );
   res.json({ success: true, data });
 }
 
 export async function deleteAlert(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await alerts.deleteAlertRule(ws(req), req.params.projectId, req.params.alertId);
+  const data = await alerts.deleteAlertRule(ws(req), param(req, 'projectId'), param(req, 'alertId'));
   res.json({ success: true, data });
 }
 
 export async function testAlert(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await alerts.testAlertRule(ws(req), req.params.projectId, req.params.alertId);
+  const data = await alerts.testAlertRule(ws(req), param(req, 'projectId'), param(req, 'alertId'));
   res.json({ success: true, data });
 }
 
 export async function alertDeliveries(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const data = await alerts.listAlertDeliveries(ws(req), req.params.projectId, req.query.ruleId as string | undefined);
+  const data = await alerts.listAlertDeliveries(ws(req), param(req, 'projectId'), req.query.ruleId as string | undefined);
   res.json({ success: true, data });
 }

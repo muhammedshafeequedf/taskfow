@@ -252,10 +252,10 @@ export default function Layout({
   }
 
   return (
-    <div className="h-screen min-h-0 flex bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+    <div className="h-screen min-h-0 overflow-hidden flex bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       {showSidebar && (
       <aside
-        className={`flex flex-col border-r border-[color:var(--sidebar-active-bg)] bg-[color:var(--sidebar-bg)] card-shadow shrink-0 transition-[width] duration-200 ease-in-out ${
+        className={`flex h-full min-h-0 flex-col border-r border-[color:var(--sidebar-active-bg)] bg-[color:var(--sidebar-bg)] card-shadow shrink-0 transition-[width] duration-200 ease-in-out ${
           sidebarCollapsed ? 'w-16' : 'w-55'
         }`}
       >
@@ -307,7 +307,7 @@ export default function Layout({
             )}
           </button>
         </div>
-        <nav className="flex-1 p-2 space-y-0.5 overflow-x-hidden mt-1">
+        <nav className="flex-1 min-h-0 p-2 space-y-0.5 overflow-y-auto overflow-x-hidden mt-1">
           {nav.map((item, i) => {
             const isProjectsLink = item.to === '/projects';
             const useEnd = 'end' in item ? (item as { end?: boolean }).end : isProjectsLink;
@@ -398,7 +398,7 @@ export default function Layout({
         </div>
       </aside>
       )}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <header className="shrink-0 flex flex-wrap items-center gap-2 sm:gap-3 px-4 py-2 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] shadow-[0_1px_0_var(--border-subtle)]">
           <div className="relative min-w-0 flex-1 basis-full sm:basis-auto max-w-md">
             <input

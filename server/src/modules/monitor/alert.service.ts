@@ -10,6 +10,7 @@ import {
 } from './monitor.models';
 import { MonitorApp, MonitorEnvironment } from './monitor.models';
 import { assertProjectInWorkspace } from './setup.service';
+import { requireWorkspaceId } from '../crm/crmWorkspace';
 import { ApiError } from '../../utils/ApiError';
 import { env } from '../../config/env';
 import {
@@ -260,13 +261,13 @@ export function evaluateMonitorAlerts(ctx: AlertContext): void {
   })().catch((err) => console.error('monitor alerts:', err));
 }
 
-export async function listAlertRules(workspaceId: string, projectId: string) {
-  await assertProjectInWorkspace(projectId, workspaceId);
+export async function listAlertRules(workspaceId: string | null | undefined, projectId: string) {
+  await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   return MonitorAlertRule.find({ projectId }).sort({ createdAt: -1 }).lean();
 }
 
-export async function listAlertDeliveries(workspaceId: string, projectId: string, ruleId?: string) {
-  await assertProjectInWorkspace(projectId, workspaceId);
+export async function listAlertDeliveries(workspaceId: string | null | undefined, projectId: string, ruleId?: string) {
+  await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   return MonitorAlertDelivery.find({
     projectId,
     ...(ruleId ? { ruleId } : {}),
@@ -301,8 +302,12 @@ function normalizeRuleBody(input: Record<string, unknown>) {
   };
 }
 
-export async function createAlertRule(workspaceId: string, projectId: string, input: Record<string, unknown>) {
-  const project = await assertProjectInWorkspace(projectId, workspaceId);
+export async function createAlertRule(
+  workspaceId: string | null | undefined,
+  projectId: string,
+  input: Record<string, unknown>
+) {
+  const project = await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   const body = normalizeRuleBody(input);
   const doc = await MonitorAlertRule.create({
     taskflowOrganizationId: (project as { taskflowOrganizationId: unknown }).taskflowOrganizationId,
@@ -313,12 +318,12 @@ export async function createAlertRule(workspaceId: string, projectId: string, in
 }
 
 export async function updateAlertRule(
-  workspaceId: string,
+  workspaceId: string | null | undefined,
   projectId: string,
   alertId: string,
   input: Record<string, unknown>
 ) {
-  await assertProjectInWorkspace(projectId, workspaceId);
+  await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   const body = normalizeRuleBody(input);
   const doc = await MonitorAlertRule.findOneAndUpdate(
     { _id: alertId, projectId },
@@ -329,15 +334,23 @@ export async function updateAlertRule(
   return doc;
 }
 
-export async function deleteAlertRule(workspaceId: string, projectId: string, alertId: string) {
-  await assertProjectInWorkspace(projectId, workspaceId);
+export async function deleteAlertRule(
+  workspaceId: string | null | undefined,
+  projectId: string,
+  alertId: string
+) {
+  await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   const res = await MonitorAlertRule.deleteOne({ _id: alertId, projectId });
   if (!res.deletedCount) throw new ApiError(404, 'Alert rule not found');
   return { ok: true };
 }
 
-export async function testAlertRule(workspaceId: string, projectId: string, alertId: string) {
-  await assertProjectInWorkspace(projectId, workspaceId);
+export async function testAlertRule(
+  workspaceId: string | null | undefined,
+  projectId: string,
+  alertId: string
+) {
+  await assertProjectInWorkspace(projectId, requireWorkspaceId(workspaceId));
   const rule = await MonitorAlertRule.findOne({ _id: alertId, projectId }).lean();
   if (!rule) throw new ApiError(404, 'Alert rule not found');
   const ctx: AlertContext = {
