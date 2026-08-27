@@ -37,7 +37,7 @@ function pick(input: Record<string, unknown>) {
 export async function listCampaigns(
   workspaceId: string | null | undefined,
   opts: { status?: string; search?: string } = {}
-) {
+): Promise<Array<Record<string, unknown>>> {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: orgOid };
@@ -68,10 +68,13 @@ export async function listCampaigns(
   return data.map((c) => {
     const stats = byId.get(String(c._id));
     return { ...c, leadCount: stats?.count ?? 0, convertedCount: stats?.converted ?? 0 };
-  });
+  }) as Array<Record<string, unknown>>;
 }
 
-export async function getCampaign(id: string, workspaceId: string | null | undefined) {
+export async function getCampaign(
+  id: string,
+  workspaceId: string | null | undefined
+): Promise<Record<string, unknown>> {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);
   const campaign = await CrmCampaign.findOne({ _id: id, taskflowOrganizationId: orgOid }).lean();
@@ -85,7 +88,7 @@ export async function getCampaign(id: string, workspaceId: string | null | undef
       status: { $nin: ['converted', 'unqualified'] },
     }),
   ]);
-  return { ...campaign, leadCount, convertedCount, openCount };
+  return { ...campaign, leadCount, convertedCount, openCount } as Record<string, unknown>;
 }
 
 export async function createCampaign(workspaceId: string | null | undefined, input: Record<string, unknown>) {
