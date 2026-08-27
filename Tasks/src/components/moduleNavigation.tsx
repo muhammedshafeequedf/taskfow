@@ -33,23 +33,27 @@ function allow(user: NavUser, ...required: string[]) {
   return canAny(user, ...required);
 }
 
-/** Project Manager — delivery first, then time, then insights, then admin */
+/**
+ * Project Manager — delivery first, then time, then insights, then admin.
+ *
+ * Dashboard / Projects / Issues are membership-scoped on the API. Non-admins who
+ * can open the PM shell often lack global `project.project.list`, which previously
+ * left the sidebar empty — always show these core links for authenticated users.
+ */
 export function buildPmNav(user: NavUser): NavItem[] {
+  if (!user) return [];
   const nav: NavItem[] = [];
 
-  if (allow(user, 'project.project.list', 'projects:list', 'project.project.create', 'projects:create')) {
-    nav.push({ to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, end: true });
-    nav.push({ to: '/projects', label: 'Projects', icon: <ProjectsIcon /> });
-  }
-  if (allow(user, 'project.project.list', 'projects:list')) {
-    nav.push({ to: '/issues', label: 'Issues', icon: <IssuesIcon /> });
-  }
+  nav.push({ to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, end: true });
+  nav.push({ to: '/projects', label: 'Projects', icon: <ProjectsIcon /> });
+  nav.push({ to: '/issues', label: 'All issues', icon: <IssuesIcon /> });
+  nav.push({ to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> });
+
   if (allow(user, 'project.project.create', 'projects:create')) {
     nav.push({ to: '/project-templates', label: 'Templates', icon: <PackageIcon /> });
   }
 
   if (allow(user, 'taskflow.report.read', 'reports:view')) {
-    nav.push({ to: '/timesheet', label: 'Timesheet', icon: <TimesheetIcon /> });
     nav.push({ to: '/estimates', label: 'Estimates', icon: <TimesheetIcon /> });
   }
 

@@ -317,7 +317,7 @@ export default function Timesheet() {
           <p className="text-xs text-[color:var(--text-muted)] mt-1">
             {projectId
               ? 'Time logged by team members per day in this project.'
-              : 'See time logged by team members per day across all your projects.'}
+              : 'Your time logged per day across all projects you are enrolled in.'}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">

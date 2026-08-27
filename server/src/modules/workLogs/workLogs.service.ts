@@ -298,7 +298,12 @@ export async function getGlobalTimesheet(
   }
 
   const logs = await WorkLog.aggregate([
-    { $match: { date: { $gte: startDay, $lte: endDay } } },
+    {
+      $match: {
+        date: { $gte: startDay, $lte: endDay },
+        author: new mongoose.Types.ObjectId(userId),
+      },
+    },
     {
       $lookup: {
         from: 'issues',
@@ -499,7 +504,12 @@ export async function getTimesheetExportData(
   endDay.setHours(23, 59, 59, 999);
 
   const logs = await WorkLog.aggregate([
-    { $match: { date: { $gte: startDay, $lte: endDay } } },
+    {
+      $match: {
+        date: { $gte: startDay, $lte: endDay },
+        author: new mongoose.Types.ObjectId(userId),
+      },
+    },
     {
       $lookup: {
         from: 'issues',
