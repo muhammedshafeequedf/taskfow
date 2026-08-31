@@ -67,9 +67,10 @@ router.post('/quotes/:id/send', requirePermission(P.QUOTE.UPDATE), asyncHandler(
 
 router.get('/contracts', requirePermission(P.CONTRACT.LIST), asyncHandler(crm.listContracts));
 router.post('/contracts', requirePermission(P.CONTRACT.CREATE), asyncHandler(crm.createContract));
+router.get('/contracts/:id/burn-down', requirePermission(P.CONTRACT.READ), asyncHandler(crm.getContractBurnDown));
+router.get('/contracts/:id', requirePermission(P.CONTRACT.READ), asyncHandler(crm.getContract));
 router.patch('/contracts/:id', requirePermission(P.CONTRACT.UPDATE), asyncHandler(crm.updateContract));
 router.delete('/contracts/:id', requirePermission(P.CONTRACT.DELETE), asyncHandler(crm.deleteContract));
-router.get('/contracts/:id/burn-down', requirePermission(P.CONTRACT.READ), asyncHandler(crm.getContractBurnDown));
 router.get(
   '/contracts-dashboard',
   requirePermission(P.CONTRACT.LIST),

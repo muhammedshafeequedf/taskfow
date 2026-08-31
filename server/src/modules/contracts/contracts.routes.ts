@@ -44,6 +44,7 @@ router.patch('/sla/policies/:id', requireAnyPermission(slaManageAny), asyncHandl
 router.get('/', requireAnyPermission(readAny), asyncHandler(ctrl.list));
 router.post('/', requireAnyPermission(manageAny), asyncHandler(ctrl.create));
 router.get('/:id/burn-down', requireAnyPermission(readAny), asyncHandler(ctrl.burnDown));
+router.get('/:id', requireAnyPermission(readAny), asyncHandler(ctrl.getById));
 router.patch('/:id', requireAnyPermission(manageAny), asyncHandler(ctrl.update));
 router.delete('/:id', requireAnyPermission(deleteAny), asyncHandler(ctrl.remove));
 

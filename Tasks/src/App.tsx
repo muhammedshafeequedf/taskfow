@@ -132,6 +132,7 @@ import {
   ContractsHourly,
   ContractsRenewals,
   ContractsSlas,
+  ContractsAgreementDetail,
 } from './pages/contracts/ContractsSections';
 import BillingDashboard from './pages/billing/BillingDashboard';
 import {
@@ -345,6 +346,7 @@ function AppRoutes() {
           <Route path="/contracts/hourly" element={<ContractsHourly />} />
           <Route path="/contracts/renewals" element={<ContractsRenewals />} />
           <Route path="/contracts/slas" element={<ContractsSlas />} />
+          <Route path="/contracts/:id" element={<ContractsAgreementDetail />} />
         </Route>
 
         {/* Billing */}

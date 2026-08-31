@@ -349,6 +349,12 @@ export async function createContract(req: Request & { user?: AuthPayload }, res:
   res.status(201).json({ success: true, data });
 }
 
+export async function getContract(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await contractsService.getContractById(req.params.id, ws(req));
+  res.json({ success: true, data });
+}
+
 export async function updateContract(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await contractsService.updateContract(req.params.id, ws(req), req.body);
   res.json({ success: true, data });

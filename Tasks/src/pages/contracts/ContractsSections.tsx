@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import {
@@ -568,7 +568,11 @@ function ContractsListPage({
           <tbody>
             {rows.map((c) => (
               <tr key={c._id} className="border-t border-[color:var(--border-subtle)]">
-                <td className="px-4 py-3 font-medium">{c.title}</td>
+                <td className="px-4 py-3 font-medium">
+                  <Link to={`/contracts/${c._id}`} className="text-[color:var(--accent)] hover:underline">
+                    {c.title}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 text-[color:var(--text-muted)]">{accountLabel(c.accountId)}</td>
                 {showHourly ? (
                   <>
@@ -762,7 +766,11 @@ export function ContractsRenewals() {
                 : null;
               return (
                 <tr key={c._id} className="border-t border-[color:var(--border-subtle)]">
-                  <td className="px-4 py-3 font-medium">{c.title}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <Link to={`/contracts/${c._id}`} className="text-[color:var(--accent)] hover:underline">
+                      {c.title}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-[color:var(--text-muted)]">{accountLabel(c.accountId)}</td>
                   <td className="px-4 py-3 uppercase text-[11px]">{c.kind ?? 'other'}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{money(c.value, c.currency)}</td>
@@ -970,6 +978,279 @@ export function ContractsSlas() {
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+function fmtDate(value?: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString();
+}
+
+function slaName(c: CrmContract): string {
+  if (c.slaPolicyId && typeof c.slaPolicyId === 'object') return c.slaPolicyId.name;
+  return c.slaPolicyId ? String(c.slaPolicyId) : 'None';
+}
+
+function listPathForKind(kind?: string): string {
+  if (kind === 'hourly') return '/contracts/hourly';
+  if (kind === 'retainer' || kind === 'amc') return '/contracts/retainers';
+  if (kind === 'msa') return '/contracts/msas';
+  return '/contracts';
+}
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">{label}</p>
+      <div className="mt-1 text-sm">{children}</div>
+    </div>
+  );
+}
+
+export function ContractsAgreementDetail() {
+  const { id } = useParams<{ id: string }>();
+  const { token, user } = useAuth();
+  const canManage = canAny(
+    user,
+    'taskflow.contracts.msa.manage',
+    'taskflow.contracts.retainer.manage',
+    'taskflow.crm.contract.update'
+  );
+  const accounts = useAccounts(token);
+  const [contract, setContract] = useState<CrmContract | null>(null);
+  const [slaPolicies, setSlaPolicies] = useState<SlaPolicy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState<ContractFormState>(() => emptyForm('hourly'));
+
+  const load = () => {
+    if (!token || !id) return;
+    setLoading(true);
+    setError('');
+    contractsApi.get(id, token).then((res) => {
+      setLoading(false);
+      if (res.success && res.data) setContract(res.data as CrmContract);
+      else setError((res as { message?: string }).message ?? 'Agreement not found');
+    });
+    contractsApi.listSla(token).then((res) => {
+      if (res.success && res.data) setSlaPolicies(res.data as SlaPolicy[]);
+    });
+  };
+
+  useEffect(() => {
+    load();
+  }, [token, id]);
+
+  function openEdit() {
+    if (!contract) return;
+    setForm({
+      accountId: accountIdOf(contract),
+      title: contract.title,
+      kind: (contract.kind as ContractFormState['kind']) ?? 'other',
+      value: contract.value ?? 0,
+      currency: contract.currency ?? 'USD',
+      billingCycle: contract.billingCycle ?? 'monthly',
+      startDate: contract.startDate ? contract.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      endDate: contract.endDate ? contract.endDate.slice(0, 10) : '',
+      renewalDate: contract.renewalDate ? contract.renewalDate.slice(0, 10) : '',
+      autoRenew: Boolean(contract.autoRenew),
+      hoursIncluded: contract.hoursIncluded ?? 0,
+      hourlyRate: contract.hourlyRate ?? 0,
+      supportPeriod: contract.supportPeriod ?? (contract.kind === 'hourly' ? 'lifelong_with_payment' : ''),
+      supportDurationMonths: contract.supportDurationMonths ?? 6,
+      prodReleaseDate: contract.prodReleaseDate ? contract.prodReleaseDate.slice(0, 10) : '',
+      status: contract.status ?? 'active',
+      notes: contract.notes ?? '',
+      slaPolicyId:
+        typeof contract.slaPolicyId === 'object' && contract.slaPolicyId
+          ? contract.slaPolicyId._id
+          : String(contract.slaPolicyId ?? ''),
+    });
+    setModal(true);
+  }
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !contract || !form.accountId || !form.title.trim()) return;
+    const isHourly = form.kind === 'hourly';
+    const payload: Record<string, unknown> = {
+      accountId: form.accountId,
+      title: form.title.trim(),
+      kind: form.kind,
+      value: Number(form.value) || 0,
+      currency: form.currency,
+      billingCycle: form.billingCycle,
+      startDate: form.startDate,
+      endDate: form.endDate || undefined,
+      renewalDate: form.renewalDate || form.endDate || undefined,
+      autoRenew: form.autoRenew,
+      hoursIncluded: form.kind === 'retainer' || form.kind === 'amc' ? form.hoursIncluded || undefined : undefined,
+      status: form.status,
+      notes: form.notes.trim() || undefined,
+      slaPolicyId: form.slaPolicyId || undefined,
+    };
+    if (isHourly) {
+      payload.hourlyRate = Number(form.hourlyRate);
+      payload.supportPeriod = form.supportPeriod || 'lifelong_with_payment';
+      if (form.supportPeriod === 'from_prod_release' || form.supportPeriod === 'from_last_invoice') {
+        payload.supportDurationMonths = Number(form.supportDurationMonths) || undefined;
+      }
+      if (form.supportPeriod === 'from_prod_release') {
+        payload.prodReleaseDate = form.prodReleaseDate || undefined;
+      }
+    }
+    const res = await contractsApi.update(contract._id, payload, token);
+    if (!res.success) return;
+    setModal(false);
+    load();
+  }
+
+  const backTo = listPathForKind(contract?.kind);
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <p className="text-sm text-[color:var(--text-muted)]">Loading agreement…</p>
+      </div>
+    );
+  }
+
+  if (error || !contract) {
+    return (
+      <div className="p-8 space-y-3">
+        <Link to="/contracts" className="text-xs text-[color:var(--accent)] hover:underline">
+          ← Dashboard
+        </Link>
+        <p className="text-sm text-red-400">{error || 'Agreement not found'}</p>
+      </div>
+    );
+  }
+
+  const isHourly = contract.kind === 'hourly';
+
+  return (
+    <div className="p-8 animate-fade-in w-full px-4 sm:px-6 lg:px-8 space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Link to={backTo} className="text-xs text-[color:var(--accent)] hover:underline">
+            ← {isHourly ? 'Hourly' : contract.kind === 'msa' ? 'MSAs' : contract.kind === 'retainer' || contract.kind === 'amc' ? 'Retainers & AMC' : 'Dashboard'}
+          </Link>
+          <h1 className="text-xl font-semibold mt-1">{contract.title}</h1>
+          <p className="text-[13px] text-[color:var(--text-muted)] mt-1 capitalize">
+            {contract.kind ?? 'other'} · {contract.status}
+            {contract.autoRenew ? ' · auto-renew' : ''}
+          </p>
+        </div>
+        {canManage && (
+          <button type="button" className="btn-primary px-4 py-2 rounded-lg text-sm" onClick={openEdit}>
+            Edit
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <DetailField label="Account">{accountLabel(contract.accountId)}</DetailField>
+        <DetailField label="Value">{money(contract.value, contract.currency)}</DetailField>
+        <DetailField label="Billing cycle">
+          <span className="capitalize">{(contract.billingCycle ?? '—').replace(/_/g, ' ')}</span>
+        </DetailField>
+        <DetailField label="Start">{fmtDate(contract.startDate)}</DetailField>
+        <DetailField label="End">{fmtDate(contract.endDate)}</DetailField>
+        <DetailField label="Renewal">{fmtDate(contract.renewalDate)}</DetailField>
+        <DetailField label="Linked SLA">{slaName(contract)}</DetailField>
+        {(contract.kind === 'retainer' || contract.kind === 'amc') && (
+          <DetailField label="Hours">
+            {contract.hoursIncluded != null ? `${contract.hoursUsed ?? 0} / ${contract.hoursIncluded}h used` : '—'}
+          </DetailField>
+        )}
+        {contract.notes && (
+          <div className="sm:col-span-2 lg:col-span-3">
+            <DetailField label="Notes">
+              <p className="whitespace-pre-wrap text-[color:var(--text-muted)]">{contract.notes}</p>
+            </DetailField>
+          </div>
+        )}
+      </div>
+
+      {isHourly && (
+        <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold">Support coverage</h2>
+            <p className="text-[13px] text-[color:var(--text-muted)] mt-0.5">
+              Hourly rate and support window for this agreement.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <DetailField label="Hourly rate">
+              {contract.hourlyRate != null ? `${moneyRate(contract.hourlyRate, contract.currency)}/h` : '—'}
+            </DetailField>
+            <DetailField label="Support period">{supportPeriodLabel(contract.supportPeriod)}</DetailField>
+            {(contract.supportPeriod === 'from_prod_release' || contract.supportPeriod === 'from_last_invoice') && (
+              <DetailField label="Duration">
+                {contract.supportDurationMonths != null ? `${contract.supportDurationMonths} months` : '—'}
+              </DetailField>
+            )}
+            {contract.supportPeriod === 'from_prod_release' && (
+              <DetailField label="Prod release date">{fmtDate(contract.prodReleaseDate)}</DetailField>
+            )}
+            {contract.supportPeriod === 'from_last_invoice' && (
+              <DetailField label="Last invoice date">{fmtDate(contract.lastInvoiceDate)}</DetailField>
+            )}
+            <DetailField label="Support ends">
+              {contract.supportEndsAt ? (
+                <span className="font-medium">{fmtDate(contract.supportEndsAt)}</span>
+              ) : (
+                <span className="text-[color:var(--text-muted)]">{contract.supportNote || '—'}</span>
+              )}
+            </DetailField>
+          </div>
+
+          {contract.supportPeriod === 'from_last_invoice' && (
+            <div className="pt-2 border-t border-[color:var(--border-subtle)]">
+              <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)] mb-2">
+                Recent invoices linked to this agreement
+              </p>
+              {(contract.recentInvoices?.length ?? 0) === 0 ? (
+                <p className="text-sm text-[color:var(--text-muted)]">
+                  No invoices yet. Support starts after the first invoice (including enhancements) is linked.
+                </p>
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {contract.recentInvoices!.map((inv) => (
+                    <li key={inv._id} className="flex flex-wrap justify-between gap-2">
+                      <span>
+                        <Link to="/billing/invoices" className="text-[color:var(--accent)] hover:underline">
+                          {inv.number}
+                        </Link>
+                        <span className="text-[color:var(--text-muted)] capitalize"> · {inv.status}</span>
+                      </span>
+                      <span className="text-[color:var(--text-muted)] tabular-nums">
+                        {fmtDate(inv.issueDate)} · {money(inv.total, inv.currency)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <ContractModal
+        open={modal}
+        title="Edit agreement"
+        form={form}
+        setForm={setForm}
+        accounts={accounts}
+        slaPolicies={slaPolicies}
+        showHours={form.kind === 'retainer' || form.kind === 'amc'}
+        showHourly={form.kind === 'hourly'}
+        onClose={() => setModal(false)}
+        onSubmit={save}
+      />
     </div>
   );
 }

@@ -2298,6 +2298,15 @@ export interface CrmContract {
   lastInvoiceDate?: string | null;
   supportEndsAt?: string | null;
   supportNote?: string;
+  recentInvoices?: Array<{
+    _id: string;
+    number: string;
+    status: string;
+    issueDate: string;
+    total: number;
+    currency: string;
+    amountPaid?: number;
+  }>;
   notes?: string;
   projectId?: string;
   slaPolicyId?: string | { _id: string; name: string };
@@ -2566,6 +2575,7 @@ export const contractsApi = {
     const q = p.toString();
     return api.get<CrmContract[]>(`/contracts${q ? `?${q}` : ''}`, token);
   },
+  get: (id: string, token: string) => api.get<CrmContract>(`/contracts/${id}`, token),
   create: (data: Partial<CrmContract> & { startDate: string; accountId: string }, token: string) =>
     api.post<CrmContract>('/contracts', data, token),
   update: (id: string, data: Partial<CrmContract>, token: string) => api.patch<CrmContract>(`/contracts/${id}`, data, token),

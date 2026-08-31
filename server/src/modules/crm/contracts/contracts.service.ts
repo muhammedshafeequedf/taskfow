@@ -245,6 +245,38 @@ export async function listContracts(workspaceId: string | null | undefined, quer
   });
 }
 
+export async function getContractById(id: string, workspaceId: string | null | undefined) {
+  const orgId = requireWorkspaceId(workspaceId);
+  const orgOid = toOrgOid(orgId);
+  if (!mongoose.Types.ObjectId.isValid(id)) throw new ApiError(404, 'Contract not found');
+
+  const contract = await CrmContract.findOne({ _id: id, taskflowOrganizationId: orgOid })
+    .populate('customerOrgId', 'name')
+    .populate('accountId', 'name type')
+    .populate('slaPolicyId', 'name')
+    .lean();
+  if (!contract) throw new ApiError(404, 'Contract not found');
+
+  let result: Record<string, unknown> = { ...contract };
+  if (contract.kind === 'hourly') {
+    const invoiceMap = await lastInvoiceDatesByContract(orgOid, [String(contract._id)]);
+    result = enrichSupport(result, invoiceMap.get(String(contract._id)));
+
+    const recentInvoices = await BillingInvoice.find({
+      taskflowOrganizationId: orgOid,
+      contractId: contract._id,
+      status: { $ne: 'void' },
+    })
+      .select('number status issueDate total currency amountPaid')
+      .sort({ issueDate: -1 })
+      .limit(5)
+      .lean();
+    result.recentInvoices = recentInvoices;
+  }
+
+  return result;
+}
+
 export async function createContract(workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
   const orgOid = toOrgOid(orgId);

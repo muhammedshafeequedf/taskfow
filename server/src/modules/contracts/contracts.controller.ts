@@ -32,6 +32,12 @@ export async function list(req: Request & { user?: AuthPayload }, res: Response)
   res.json({ success: true, data });
 }
 
+export async function getById(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await contractsService.getContractById(req.params.id, ws(req));
+  res.json({ success: true, data });
+}
+
 export async function create(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await contractsService.createContract(ws(req), req.body);
   res.status(201).json({ success: true, data });
