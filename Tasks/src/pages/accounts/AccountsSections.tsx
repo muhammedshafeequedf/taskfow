@@ -90,7 +90,7 @@ export function AccountsInvoices() {
                   <Link to="/billing/invoices" className="text-[color:var(--accent)] hover:underline">{i.number}</Link>
                 </td>
                 <td className="px-4 py-2.5">
-                  {typeof i.accountId === 'object' && i.accountId._id ? (
+                  {typeof i.accountId === 'object' && i.accountId?._id ? (
                     <Link to={`/crm/accounts/${i.accountId._id}`} className="text-[color:var(--accent)] hover:underline">
                       {nameOf(i.accountId, '—')}
                     </Link>

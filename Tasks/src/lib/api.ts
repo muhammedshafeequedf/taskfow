@@ -2273,12 +2273,14 @@ export interface CrmCampaign {
   openCount?: number;
 }
 
+export type CrmContractSupportPeriod = 'lifelong_with_payment' | 'from_prod_release' | 'from_last_invoice';
+
 export interface CrmContract {
   _id: string;
   title: string;
   accountId?: string | { _id: string; name: string; type?: string };
   customerOrgId?: string | { _id: string; name?: string };
-  kind?: 'msa' | 'retainer' | 'amc' | 'other';
+  kind?: 'msa' | 'retainer' | 'amc' | 'hourly' | 'other';
   value: number;
   currency: string;
   status: string;
@@ -2289,6 +2291,13 @@ export interface CrmContract {
   autoRenew?: boolean;
   hoursIncluded?: number;
   hoursUsed?: number;
+  hourlyRate?: number;
+  supportPeriod?: CrmContractSupportPeriod;
+  supportDurationMonths?: number;
+  prodReleaseDate?: string;
+  lastInvoiceDate?: string | null;
+  supportEndsAt?: string | null;
+  supportNote?: string;
   notes?: string;
   projectId?: string;
   slaPolicyId?: string | { _id: string; name: string };

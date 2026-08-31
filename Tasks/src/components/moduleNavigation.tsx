@@ -287,6 +287,16 @@ export function buildContractsNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.contracts.retainer.list', 'taskflow.crm.contract.list')) {
     nav.push({ to: '/contracts/retainers', label: 'Retainers & AMC', icon: <TimesheetIcon /> });
   }
+  if (
+    allow(
+      user,
+      'taskflow.contracts.msa.list',
+      'taskflow.contracts.retainer.list',
+      'taskflow.crm.contract.list'
+    )
+  ) {
+    nav.push({ to: '/contracts/hourly', label: 'Hourly', icon: <TimesheetIcon /> });
+  }
   if (allow(user, 'taskflow.contracts.renewal.read', 'taskflow.crm.contract.list')) {
     nav.push({ to: '/contracts/renewals', label: 'Renewals', icon: <IssuesIcon /> });
   }

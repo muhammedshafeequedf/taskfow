@@ -25,6 +25,7 @@ type ContractsDash = {
     active: number;
     msas: number;
     retainers: number;
+    hourly: number;
     renewalsIn30: number;
     renewalsIn90: number;
     slaPolicies: number;
@@ -115,7 +116,7 @@ export default function ContractsDashboard() {
             </p>
             <h1 className="text-2xl font-bold tracking-tight mt-1">Agreement dashboard</h1>
             <p className="text-[13px] text-[color:var(--text-muted)] mt-1 max-w-xl">
-              MSAs, retainers, renewals, and SLA coverage across your customer agreements.
+              MSAs, retainers, hourly agreements, renewals, and SLA coverage across your customer agreements.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
@@ -127,6 +128,12 @@ export default function ContractsDashboard() {
               className="px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]/40 transition"
             >
               Retainers
+            </Link>
+            <Link
+              to="/contracts/hourly"
+              className="px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] hover:border-[color:var(--accent)]/40 transition"
+            >
+              Hourly
             </Link>
             <Link
               to="/contracts/renewals"
@@ -144,10 +151,13 @@ export default function ContractsDashboard() {
         </div>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard title="Active value" value={money(data.activeValue)} helperText={`${data.counts.active} active`} />
         <Link to="/contracts/msas" className="block">
           <MetricCard title="MSAs" value={data.counts.msas} helperText={`${data.counts.total} total agreements`} />
+        </Link>
+        <Link to="/contracts/hourly" className="block">
+          <MetricCard title="Hourly" value={data.counts.hourly ?? 0} helperText="Rate-based agreements" />
         </Link>
         <Link to="/contracts/renewals" className="block">
           <MetricCard
@@ -239,7 +249,7 @@ export default function ContractsDashboard() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <SectionCard title="By agreement type" description="MSA, retainer, AMC, and other contracts.">
+        <SectionCard title="By agreement type" description="MSA, retainer, AMC, hourly, and other contracts.">
           {kindBars.length === 0 ? (
             <EmptyChart label="Create contracts to see the type mix." />
           ) : (

@@ -477,7 +477,7 @@ export function BillingInvoices() {
               <tr key={inv._id} className="border-t border-[color:var(--border-subtle)]">
                 <td className="px-4 py-3 font-medium">{inv.number}</td>
                 <td className="px-4 py-3 text-[color:var(--text-muted)]">
-                  {typeof inv.accountId === 'object' && inv.accountId._id ? (
+                  {typeof inv.accountId === 'object' && inv.accountId?._id ? (
                     <Link to={`/crm/accounts/${inv.accountId._id}`} className="text-[color:var(--accent)] hover:underline">
                       {accountLabel(inv.accountId)}
                     </Link>

@@ -1,8 +1,9 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type CrmContractBillingCycle = 'monthly' | 'quarterly' | 'annual' | 'one_time';
-export type CrmContractKind = 'msa' | 'retainer' | 'amc' | 'other';
+export type CrmContractKind = 'msa' | 'retainer' | 'amc' | 'hourly' | 'other';
 export type CrmContractStatus = 'draft' | 'active' | 'expired' | 'cancelled';
+export type CrmContractSupportPeriod = 'lifelong_with_payment' | 'from_prod_release' | 'from_last_invoice';
 
 export interface ICrmContract extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
@@ -22,6 +23,9 @@ export interface ICrmContract extends Document {
   hoursIncluded?: number;
   hoursUsed?: number;
   hourlyRate?: number;
+  supportPeriod?: CrmContractSupportPeriod;
+  supportDurationMonths?: number;
+  prodReleaseDate?: Date;
   status: CrmContractStatus;
   slaPolicyId?: mongoose.Types.ObjectId;
   notes?: string;
@@ -37,7 +41,7 @@ const crmContractSchema = new Schema<ICrmContract>(
     dealId: { type: Schema.Types.ObjectId, ref: 'CrmDeal' },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
     title: { type: String, required: true },
-    kind: { type: String, enum: ['msa', 'retainer', 'amc', 'other'], default: 'other', index: true },
+    kind: { type: String, enum: ['msa', 'retainer', 'amc', 'hourly', 'other'], default: 'other', index: true },
     value: { type: Number, default: 0 },
     currency: { type: String, default: 'USD' },
     billingCycle: { type: String, enum: ['monthly', 'quarterly', 'annual', 'one_time'], default: 'monthly' },
@@ -48,6 +52,12 @@ const crmContractSchema = new Schema<ICrmContract>(
     hoursIncluded: { type: Number },
     hoursUsed: { type: Number, default: 0 },
     hourlyRate: { type: Number },
+    supportPeriod: {
+      type: String,
+      enum: ['lifelong_with_payment', 'from_prod_release', 'from_last_invoice'],
+    },
+    supportDurationMonths: { type: Number },
+    prodReleaseDate: { type: Date },
     status: { type: String, enum: ['draft', 'active', 'expired', 'cancelled'], default: 'draft', index: true },
     slaPolicyId: { type: Schema.Types.ObjectId, ref: 'SlaPolicy' },
     notes: { type: String },

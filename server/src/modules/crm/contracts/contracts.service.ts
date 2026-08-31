@@ -1,10 +1,22 @@
 import mongoose from 'mongoose';
-import { CrmContract, type CrmContractKind } from '../models/crmContract.model';
+import {
+  CrmContract,
+  type CrmContractKind,
+  type CrmContractSupportPeriod,
+} from '../models/crmContract.model';
+import { CrmAccount } from '../models/crmAccount.model';
 import { CustomerOrg } from '../../customer-portal/customer-org/customerOrg.model';
 import { WorkLog } from '../../workLogs/workLog.model';
 import { SlaPolicy } from '../../service-desk/models/slaPolicy.model';
+import { BillingInvoice } from '../../billing/models/billingInvoice.model';
 import { ApiError } from '../../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
+
+const SUPPORT_PERIODS: CrmContractSupportPeriod[] = [
+  'lifelong_with_payment',
+  'from_prod_release',
+  'from_last_invoice',
+];
 
 const ALLOWED_UPDATE = [
   'title',
@@ -18,12 +30,17 @@ const ALLOWED_UPDATE = [
   'autoRenew',
   'hoursIncluded',
   'hoursUsed',
+  'hourlyRate',
+  'supportPeriod',
+  'supportDurationMonths',
+  'prodReleaseDate',
   'status',
   'notes',
   'projectId',
   'dealId',
   'slaPolicyId',
   'customerOrgId',
+  'accountId',
 ] as const;
 
 export type ListContractsQuery = {
@@ -40,16 +57,49 @@ function asDate(value: unknown): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
+function addMonths(date: Date, months: number): Date {
+  const d = new Date(date.getTime());
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function assertHourlyFields(kind: string, input: Record<string, unknown>) {
+  if (kind !== 'hourly') return;
+  const rate = Number(input.hourlyRate);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new ApiError(400, 'Hourly rate is required and must be greater than 0');
+  }
+  const period = String(input.supportPeriod ?? '') as CrmContractSupportPeriod;
+  if (!SUPPORT_PERIODS.includes(period)) {
+    throw new ApiError(400, 'Support period is required for hourly agreements');
+  }
+  if (period !== 'lifelong_with_payment') {
+    const months = Number(input.supportDurationMonths);
+    if (!Number.isFinite(months) || months < 1) {
+      throw new ApiError(400, 'Support duration (months) is required and must be at least 1');
+    }
+  }
+  if (period === 'from_prod_release' && !asDate(input.prodReleaseDate)) {
+    throw new ApiError(400, 'Prod release date is required for this support period');
+  }
+}
+
 function pickUpdates(input: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of ALLOWED_UPDATE) {
     if (!(key in input)) continue;
     const val = input[key];
-    if (key === 'startDate' || key === 'endDate' || key === 'renewalDate') {
+    if (key === 'startDate' || key === 'endDate' || key === 'renewalDate' || key === 'prodReleaseDate') {
       out[key] = val === null || val === '' ? null : asDate(val);
       continue;
     }
-    if (key === 'value' || key === 'hoursIncluded' || key === 'hoursUsed') {
+    if (
+      key === 'value' ||
+      key === 'hoursIncluded' ||
+      key === 'hoursUsed' ||
+      key === 'hourlyRate' ||
+      key === 'supportDurationMonths'
+    ) {
       out[key] = val === null || val === undefined || val === '' ? undefined : Number(val);
       continue;
     }
@@ -57,7 +107,7 @@ function pickUpdates(input: Record<string, unknown>): Record<string, unknown> {
       out[key] = Boolean(val);
       continue;
     }
-    if (key === 'projectId' || key === 'dealId' || key === 'slaPolicyId' || key === 'customerOrgId') {
+    if (key === 'projectId' || key === 'dealId' || key === 'slaPolicyId' || key === 'customerOrgId' || key === 'accountId') {
       out[key] = val === null || val === '' ? null : val;
       continue;
     }
@@ -66,9 +116,109 @@ function pickUpdates(input: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+async function resolveCustomerOrgId(
+  orgOid: mongoose.Types.ObjectId,
+  input: Record<string, unknown>
+): Promise<{ customerOrgId?: string; accountId?: string }> {
+  let customerOrgId = input.customerOrgId ? String(input.customerOrgId) : '';
+  let accountId = input.accountId ? String(input.accountId) : undefined;
+
+  if (accountId) {
+    const account = await CrmAccount.findOne({ _id: accountId, taskflowOrganizationId: orgOid }).lean();
+    if (!account) throw new ApiError(404, 'Account not found');
+    if (!customerOrgId && account.customerOrgId) {
+      customerOrgId = String(account.customerOrgId);
+    }
+  }
+
+  if (!customerOrgId && accountId) {
+    const linked = await CustomerOrg.findOne({
+      taskflowOrganizationId: orgOid,
+      crmAccountId: accountId,
+    }).lean();
+    if (linked) customerOrgId = String(linked._id);
+  }
+
+  if (customerOrgId) {
+    const customerOrg = await CustomerOrg.findOne({ _id: customerOrgId, taskflowOrganizationId: orgOid });
+    if (!customerOrg) throw new ApiError(404, 'Customer organisation not found');
+  }
+
+  if (!customerOrgId && !accountId) {
+    throw new ApiError(400, 'Account or customer organisation is required');
+  }
+
+  return { customerOrgId: customerOrgId || undefined, accountId };
+}
+
+async function lastInvoiceDatesByContract(
+  orgOid: mongoose.Types.ObjectId,
+  contractIds: string[]
+): Promise<Map<string, Date>> {
+  const map = new Map<string, Date>();
+  if (contractIds.length === 0) return map;
+  const oids = contractIds
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+  if (oids.length === 0) return map;
+
+  const rows = await BillingInvoice.aggregate<{ _id: mongoose.Types.ObjectId; lastIssueDate: Date }>([
+    {
+      $match: {
+        taskflowOrganizationId: orgOid,
+        contractId: { $in: oids },
+        status: { $ne: 'void' },
+      },
+    },
+    { $group: { _id: '$contractId', lastIssueDate: { $max: '$issueDate' } } },
+  ]);
+  for (const row of rows) {
+    map.set(String(row._id), new Date(row.lastIssueDate));
+  }
+  return map;
+}
+
+function enrichSupport(
+  contract: Record<string, unknown>,
+  lastInvoiceDate?: Date
+): Record<string, unknown> {
+  const period = contract.supportPeriod as CrmContractSupportPeriod | undefined;
+  const months = Number(contract.supportDurationMonths ?? 0);
+  let supportEndsAt: Date | null = null;
+  let supportNote: string | undefined;
+
+  if (period === 'lifelong_with_payment') {
+    supportNote =
+      contract.status === 'active'
+        ? 'Lifelong while active with payment'
+        : 'Lifelong with payment (inactive)';
+  } else if (period === 'from_prod_release') {
+    const release = contract.prodReleaseDate ? new Date(String(contract.prodReleaseDate)) : undefined;
+    if (release && Number.isFinite(months) && months >= 1) {
+      supportEndsAt = addMonths(release, months);
+    } else {
+      supportNote = 'Set prod release date and duration';
+    }
+  } else if (period === 'from_last_invoice') {
+    if (lastInvoiceDate && Number.isFinite(months) && months >= 1) {
+      supportEndsAt = addMonths(lastInvoiceDate, months);
+    } else {
+      supportNote = 'Starts after first invoice';
+    }
+  }
+
+  return {
+    ...contract,
+    lastInvoiceDate: lastInvoiceDate ?? null,
+    supportEndsAt,
+    supportNote,
+  };
+}
+
 export async function listContracts(workspaceId: string | null | undefined, query: ListContractsQuery = {}) {
   const orgId = requireWorkspaceId(workspaceId);
-  const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
+  const orgOid = toOrgOid(orgId);
+  const filter: Record<string, unknown> = { taskflowOrganizationId: orgOid };
   if (query.customerOrgId) filter.customerOrgId = query.customerOrgId;
   if (query.accountId) filter.accountId = query.accountId;
   if (query.kind) filter.kind = query.kind;
@@ -79,36 +229,53 @@ export async function listContracts(workspaceId: string | null | undefined, quer
     filter.status = query.status ?? 'active';
     filter.renewalDate = { $gte: now, $lte: until };
   }
-  return CrmContract.find(filter)
+  const rows = await CrmContract.find(filter)
     .populate('customerOrgId', 'name')
     .populate('accountId', 'name type')
     .populate('slaPolicyId', 'name')
     .sort({ renewalDate: 1, startDate: -1 })
     .lean();
+
+  const hourlyIds = rows.filter((c) => c.kind === 'hourly').map((c) => String(c._id));
+  const invoiceMap = await lastInvoiceDatesByContract(orgOid, hourlyIds);
+
+  return rows.map((c) => {
+    if (c.kind !== 'hourly') return c;
+    return enrichSupport(c as Record<string, unknown>, invoiceMap.get(String(c._id)));
+  });
 }
 
 export async function createContract(workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
-  const customerOrgId = String(input.customerOrgId ?? '');
-  if (!customerOrgId) throw new ApiError(400, 'Customer organisation is required');
-  const customerOrg = await CustomerOrg.findOne({ _id: customerOrgId, taskflowOrganizationId: toOrgOid(orgId) });
-  if (!customerOrg) throw new ApiError(404, 'Customer organisation not found');
+  const orgOid = toOrgOid(orgId);
+  const { customerOrgId, accountId } = await resolveCustomerOrgId(orgOid, input);
   if (!input.title || !String(input.title).trim()) throw new ApiError(400, 'Title is required');
   if (!input.startDate) throw new ApiError(400, 'Start date is required');
 
   if (input.slaPolicyId) {
-    const sla = await SlaPolicy.findOne({ _id: input.slaPolicyId, taskflowOrganizationId: toOrgOid(orgId) });
+    const sla = await SlaPolicy.findOne({ _id: input.slaPolicyId, taskflowOrganizationId: orgOid });
     if (!sla) throw new ApiError(404, 'SLA policy not found');
   }
 
   const kind = (String(input.kind ?? 'other') as CrmContractKind) || 'other';
+  assertHourlyFields(kind, input);
+
   const endDate = asDate(input.endDate);
   const renewalDate = asDate(input.renewalDate) ?? endDate;
+  const supportPeriod = input.supportPeriod
+    ? (String(input.supportPeriod) as CrmContractSupportPeriod)
+    : undefined;
+  const supportDurationMonths =
+    input.supportDurationMonths != null && input.supportDurationMonths !== ''
+      ? Number(input.supportDurationMonths)
+      : undefined;
+  const hourlyRate =
+    input.hourlyRate != null && input.hourlyRate !== '' ? Number(input.hourlyRate) : undefined;
 
   const doc = await CrmContract.create({
-    taskflowOrganizationId: toOrgOid(orgId),
-    accountId: input.accountId || undefined,
-    customerOrgId,
+    taskflowOrganizationId: orgOid,
+    accountId: accountId || undefined,
+    customerOrgId: customerOrgId || undefined,
     dealId: input.dealId || undefined,
     projectId: input.projectId || undefined,
     title: String(input.title).trim(),
@@ -121,6 +288,11 @@ export async function createContract(workspaceId: string | null | undefined, inp
     renewalDate,
     autoRenew: Boolean(input.autoRenew),
     hoursIncluded: input.hoursIncluded != null && input.hoursIncluded !== '' ? Number(input.hoursIncluded) : undefined,
+    hourlyRate,
+    supportPeriod,
+    supportDurationMonths:
+      supportPeriod && supportPeriod !== 'lifelong_with_payment' ? supportDurationMonths : undefined,
+    prodReleaseDate: supportPeriod === 'from_prod_release' ? asDate(input.prodReleaseDate) : undefined,
     status: input.status ?? 'draft',
     slaPolicyId: input.slaPolicyId || undefined,
     notes: input.notes,
@@ -130,17 +302,44 @@ export async function createContract(workspaceId: string | null | undefined, inp
 
 export async function updateContract(id: string, workspaceId: string | null | undefined, input: Record<string, unknown>) {
   const orgId = requireWorkspaceId(workspaceId);
+  const orgOid = toOrgOid(orgId);
+  const existing = await CrmContract.findOne({ _id: id, taskflowOrganizationId: orgOid }).lean();
+  if (!existing) throw new ApiError(404, 'Contract not found');
+
   const updates = pickUpdates(input);
+  const nextKind = String(updates.kind ?? existing.kind ?? 'other');
+  const mergedForValidation: Record<string, unknown> = {
+    hourlyRate: updates.hourlyRate !== undefined ? updates.hourlyRate : existing.hourlyRate,
+    supportPeriod: updates.supportPeriod !== undefined ? updates.supportPeriod : existing.supportPeriod,
+    supportDurationMonths:
+      updates.supportDurationMonths !== undefined ? updates.supportDurationMonths : existing.supportDurationMonths,
+    prodReleaseDate: updates.prodReleaseDate !== undefined ? updates.prodReleaseDate : existing.prodReleaseDate,
+  };
+  assertHourlyFields(nextKind, mergedForValidation);
+
   if (updates.slaPolicyId) {
-    const sla = await SlaPolicy.findOne({ _id: updates.slaPolicyId, taskflowOrganizationId: toOrgOid(orgId) });
+    const sla = await SlaPolicy.findOne({ _id: updates.slaPolicyId, taskflowOrganizationId: orgOid });
     if (!sla) throw new ApiError(404, 'SLA policy not found');
   }
+
+  if (nextKind === 'hourly' && updates.supportPeriod === 'lifelong_with_payment') {
+    updates.supportDurationMonths = undefined;
+    updates.prodReleaseDate = null;
+  }
+  if (nextKind === 'hourly' && updates.supportPeriod && updates.supportPeriod !== 'from_prod_release') {
+    if (!('prodReleaseDate' in updates)) updates.prodReleaseDate = null;
+  }
+
   const updated = await CrmContract.findOneAndUpdate(
-    { _id: id, taskflowOrganizationId: toOrgOid(orgId) },
+    { _id: id, taskflowOrganizationId: orgOid },
     { $set: updates },
     { new: true }
   ).lean();
   if (!updated) throw new ApiError(404, 'Contract not found');
+  if (updated.kind === 'hourly') {
+    const invoiceMap = await lastInvoiceDatesByContract(orgOid, [String(updated._id)]);
+    return enrichSupport(updated as Record<string, unknown>, invoiceMap.get(String(updated._id)));
+  }
   return updated;
 }
 
@@ -197,7 +396,7 @@ export async function getContractsHubDashboard(workspaceId: string | null | unde
     value: contracts.filter((c) => c.status === status).reduce((s, c) => s + (c.value ?? 0), 0),
   }));
 
-  const byKind = ['msa', 'retainer', 'amc', 'other'].map((kind) => ({
+  const byKind = ['msa', 'retainer', 'amc', 'hourly', 'other'].map((kind) => ({
     name: kind.toUpperCase(),
     kind,
     count: contracts.filter((c) => (c.kind ?? 'other') === kind).length,
@@ -268,6 +467,7 @@ export async function getContractsHubDashboard(workspaceId: string | null | unde
       active: active.length,
       msas: contracts.filter((c) => c.kind === 'msa').length,
       retainers: contracts.filter((c) => c.kind === 'retainer' || c.kind === 'amc').length,
+      hourly: contracts.filter((c) => c.kind === 'hourly').length,
       renewalsIn30: renewalsIn30.length,
       renewalsIn90: renewalsIn90.length,
       slaPolicies: slaPolicies.length,

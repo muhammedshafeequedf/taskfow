@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
-import { crmApi, type CrmContract } from '../../lib/api';
+import { crmApi, type CrmContract, type CrmContractSupportPeriod } from '../../lib/api';
 
 export default function CrmContracts() {
   const { token, user } = useAuth();
@@ -15,7 +15,7 @@ export default function CrmContracts() {
   const [form, setForm] = useState({
     customerOrgId: '',
     title: '',
-    kind: 'retainer' as 'msa' | 'retainer' | 'amc' | 'other',
+    kind: 'retainer' as 'msa' | 'retainer' | 'amc' | 'hourly' | 'other',
     value: 0,
     currency: 'USD',
     billingCycle: 'monthly',
@@ -23,6 +23,10 @@ export default function CrmContracts() {
     endDate: '',
     renewalDate: '',
     hoursIncluded: 0,
+    hourlyRate: 0,
+    supportPeriod: 'lifelong_with_payment' as CrmContractSupportPeriod,
+    supportDurationMonths: 6,
+    prodReleaseDate: '',
     status: 'active',
     notes: '',
   });
@@ -48,23 +52,31 @@ export default function CrmContracts() {
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !form.customerOrgId || !form.title.trim()) return;
-    await crmApi.createContract(
-      {
-        customerOrgId: form.customerOrgId,
-        title: form.title.trim(),
-        kind: form.kind,
-        value: Number(form.value) || 0,
-        currency: form.currency,
-        billingCycle: form.billingCycle,
-        startDate: form.startDate,
-        endDate: form.endDate || undefined,
-        renewalDate: form.renewalDate || form.endDate || undefined,
-        hoursIncluded: form.hoursIncluded || undefined,
-        status: form.status,
-        notes: form.notes.trim() || undefined,
-      },
-      token
-    );
+    const payload: Parameters<typeof crmApi.createContract>[0] = {
+      customerOrgId: form.customerOrgId,
+      title: form.title.trim(),
+      kind: form.kind,
+      value: Number(form.value) || 0,
+      currency: form.currency,
+      billingCycle: form.billingCycle,
+      startDate: form.startDate,
+      endDate: form.endDate || undefined,
+      renewalDate: form.renewalDate || form.endDate || undefined,
+      hoursIncluded: form.kind === 'hourly' ? undefined : form.hoursIncluded || undefined,
+      status: form.status,
+      notes: form.notes.trim() || undefined,
+    };
+    if (form.kind === 'hourly') {
+      payload.hourlyRate = Number(form.hourlyRate);
+      payload.supportPeriod = form.supportPeriod;
+      if (form.supportPeriod === 'from_prod_release' || form.supportPeriod === 'from_last_invoice') {
+        payload.supportDurationMonths = Number(form.supportDurationMonths) || undefined;
+      }
+      if (form.supportPeriod === 'from_prod_release') {
+        payload.prodReleaseDate = form.prodReleaseDate || undefined;
+      }
+    }
+    await crmApi.createContract(payload, token);
     setModal(false);
     load();
   }
@@ -139,7 +151,9 @@ export default function CrmContracts() {
                   orgName(c)
                 )}
                 {' '}· {c.kind ?? 'other'} · {c.status} · ${c.value} {c.currency}
-                {c.hoursIncluded != null ? ` · ${c.hoursIncluded}h included` : ''}
+                {c.kind === 'hourly' && c.hourlyRate != null ? ` · $${c.hourlyRate}/h` : ''}
+                {c.kind === 'hourly' && c.supportPeriod ? ` · ${c.supportPeriod.replace(/_/g, ' ')}` : ''}
+                {c.hoursIncluded != null && c.kind !== 'hourly' ? ` · ${c.hoursIncluded}h included` : ''}
               </p>
             </div>
             <div className="flex gap-2 text-sm">
@@ -182,6 +196,7 @@ export default function CrmContracts() {
                   <option value="msa">MSA</option>
                   <option value="retainer">Retainer</option>
                   <option value="amc">AMC</option>
+                  <option value="hourly">Hourly</option>
                   <option value="other">Other</option>
                 </select>
               </label>
@@ -195,11 +210,60 @@ export default function CrmContracts() {
                 <span className="text-[color:var(--text-muted)]">Value</span>
                 <input type="number" min={0} value={form.value} onChange={(e) => setForm((f) => ({ ...f, value: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
               </label>
-              <label className="block text-xs space-y-1">
-                <span className="text-[color:var(--text-muted)]">Hours included</span>
-                <input type="number" min={0} value={form.hoursIncluded} onChange={(e) => setForm((f) => ({ ...f, hoursIncluded: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
-              </label>
+              {form.kind === 'hourly' ? (
+                <label className="block text-xs space-y-1">
+                  <span className="text-[color:var(--text-muted)]">Hourly rate</span>
+                  <input type="number" min={0.01} step="0.01" required value={form.hourlyRate} onChange={(e) => setForm((f) => ({ ...f, hourlyRate: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
+                </label>
+              ) : (
+                <label className="block text-xs space-y-1">
+                  <span className="text-[color:var(--text-muted)]">Hours included</span>
+                  <input type="number" min={0} value={form.hoursIncluded} onChange={(e) => setForm((f) => ({ ...f, hoursIncluded: Number(e.target.value) }))} className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm" />
+                </label>
+              )}
             </div>
+            {form.kind === 'hourly' && (
+              <>
+                <label className="block text-xs space-y-1">
+                  <span className="text-[color:var(--text-muted)]">Support period</span>
+                  <select
+                    required
+                    value={form.supportPeriod}
+                    onChange={(e) => setForm((f) => ({ ...f, supportPeriod: e.target.value as CrmContractSupportPeriod }))}
+                    className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                  >
+                    <option value="lifelong_with_payment">Lifelong with payment</option>
+                    <option value="from_prod_release">Up to N months from prod release</option>
+                    <option value="from_last_invoice">Up to N months from last invoice</option>
+                  </select>
+                </label>
+                {(form.supportPeriod === 'from_prod_release' || form.supportPeriod === 'from_last_invoice') && (
+                  <label className="block text-xs space-y-1">
+                    <span className="text-[color:var(--text-muted)]">Support duration (months)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={form.supportDurationMonths}
+                      onChange={(e) => setForm((f) => ({ ...f, supportDurationMonths: Number(e.target.value) }))}
+                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                )}
+                {form.supportPeriod === 'from_prod_release' && (
+                  <label className="block text-xs space-y-1">
+                    <span className="text-[color:var(--text-muted)]">Prod release date</span>
+                    <input
+                      type="date"
+                      required
+                      value={form.prodReleaseDate}
+                      onChange={(e) => setForm((f) => ({ ...f, prodReleaseDate: e.target.value }))}
+                      className="w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                    />
+                  </label>
+                )}
+              </>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-xs space-y-1">
                 <span className="text-[color:var(--text-muted)]">Start</span>

@@ -7,6 +7,7 @@ import {
   crmApi,
   type CrmAccount,
   type CrmContract,
+  type CrmContractSupportPeriod,
   type SlaPolicy,
 } from '../../lib/api';
 
@@ -23,10 +24,15 @@ function accountIdOf(c: CrmContract): string {
 const money = (n: number, currency = 'USD') =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(n || 0);
 
+const moneyRate = (n: number, currency = 'USD') =>
+  new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(n || 0);
+
+type ContractKind = 'msa' | 'retainer' | 'amc' | 'hourly' | 'other';
+
 type ContractFormState = {
   accountId: string;
   title: string;
-  kind: 'msa' | 'retainer' | 'amc' | 'other';
+  kind: ContractKind;
   value: number;
   currency: string;
   billingCycle: string;
@@ -35,6 +41,10 @@ type ContractFormState = {
   renewalDate: string;
   autoRenew: boolean;
   hoursIncluded: number;
+  hourlyRate: number;
+  supportPeriod: CrmContractSupportPeriod | '';
+  supportDurationMonths: number;
+  prodReleaseDate: string;
   status: string;
   notes: string;
   slaPolicyId: string;
@@ -52,10 +62,40 @@ const emptyForm = (kind: ContractFormState['kind']): ContractFormState => ({
   renewalDate: '',
   autoRenew: false,
   hoursIncluded: kind === 'retainer' || kind === 'amc' ? 40 : 0,
+  hourlyRate: kind === 'hourly' ? 0 : 0,
+  supportPeriod: kind === 'hourly' ? 'lifelong_with_payment' : '',
+  supportDurationMonths: 6,
+  prodReleaseDate: '',
   status: 'active',
   notes: '',
   slaPolicyId: '',
 });
+
+function supportPeriodLabel(period?: CrmContractSupportPeriod | string): string {
+  switch (period) {
+    case 'lifelong_with_payment':
+      return 'Lifelong with payment';
+    case 'from_prod_release':
+      return 'From prod release';
+    case 'from_last_invoice':
+      return 'From last invoice';
+    default:
+      return '—';
+  }
+}
+
+function supportSummary(c: CrmContract): string {
+  if (c.kind !== 'hourly') return '—';
+  if (c.supportPeriod === 'lifelong_with_payment') return supportPeriodLabel(c.supportPeriod);
+  const months = c.supportDurationMonths != null ? `${c.supportDurationMonths} mo` : '';
+  return [supportPeriodLabel(c.supportPeriod), months].filter(Boolean).join(' · ');
+}
+
+function supportEndLabel(c: CrmContract): string {
+  if (c.kind !== 'hourly') return '—';
+  if (c.supportEndsAt) return new Date(c.supportEndsAt).toLocaleDateString();
+  return c.supportNote || '—';
+}
 
 function useAccounts(token: string | null) {
   const [accounts, setAccounts] = useState<CrmAccount[]>([]);
@@ -78,6 +118,7 @@ function ContractModal({
   accounts,
   slaPolicies,
   showHours,
+  showHourly,
   onClose,
   onSubmit,
 }: {
@@ -88,15 +129,19 @@ function ContractModal({
   accounts: CrmAccount[];
   slaPolicies: SlaPolicy[];
   showHours?: boolean;
+  showHourly?: boolean;
   onClose: () => void;
   onSubmit: (e: FormEvent) => void;
 }) {
   if (!open) return null;
+  const isHourly = showHourly || form.kind === 'hourly';
+  const needsDuration =
+    form.supportPeriod === 'from_prod_release' || form.supportPeriod === 'from_last_invoice';
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-lg rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-6 space-y-3 shadow-xl"
+        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-6 space-y-3 shadow-xl"
       >
         <h2 className="text-lg font-semibold">{title}</h2>
         <label className="block text-xs text-[color:var(--text-muted)]">
@@ -135,6 +180,7 @@ function ContractModal({
               <option value="msa">MSA</option>
               <option value="retainer">Retainer</option>
               <option value="amc">AMC</option>
+              <option value="hourly">Hourly</option>
               <option value="other">Other</option>
             </select>
           </label>
@@ -176,6 +222,65 @@ function ContractModal({
             </select>
           </label>
         </div>
+        {isHourly && (
+          <>
+            <label className="block text-xs text-[color:var(--text-muted)]">
+              Hourly rate
+              <input
+                type="number"
+                min={0.01}
+                step="0.01"
+                required
+                className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                value={form.hourlyRate}
+                onChange={(e) => setForm((f) => ({ ...f, hourlyRate: Number(e.target.value) }))}
+              />
+            </label>
+            <label className="block text-xs text-[color:var(--text-muted)]">
+              Support period
+              <select
+                required
+                className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                value={form.supportPeriod}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    supportPeriod: e.target.value as CrmContractSupportPeriod,
+                  }))
+                }
+              >
+                <option value="lifelong_with_payment">Lifelong with payment</option>
+                <option value="from_prod_release">Up to N months from prod release</option>
+                <option value="from_last_invoice">Up to N months from last invoice</option>
+              </select>
+            </label>
+            {needsDuration && (
+              <label className="block text-xs text-[color:var(--text-muted)]">
+                Support duration (months)
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                  value={form.supportDurationMonths}
+                  onChange={(e) => setForm((f) => ({ ...f, supportDurationMonths: Number(e.target.value) }))}
+                />
+              </label>
+            )}
+            {form.supportPeriod === 'from_prod_release' && (
+              <label className="block text-xs text-[color:var(--text-muted)]">
+                Prod release date
+                <input
+                  type="date"
+                  required
+                  className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
+                  value={form.prodReleaseDate}
+                  onChange={(e) => setForm((f) => ({ ...f, prodReleaseDate: e.target.value }))}
+                />
+              </label>
+            )}
+          </>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-xs text-[color:var(--text-muted)]">
             Start
@@ -271,13 +376,15 @@ function ContractsListPage({
   kinds,
   defaultKind,
   showHours,
+  showHourly,
   managePerms,
 }: {
   title: string;
   subtitle: string;
-  kinds?: Array<'msa' | 'retainer' | 'amc' | 'other'>;
+  kinds?: ContractKind[];
   defaultKind: ContractFormState['kind'];
   showHours?: boolean;
+  showHourly?: boolean;
   managePerms: string[];
 }) {
   const { token, user } = useAuth();
@@ -343,6 +450,10 @@ function ContractsListPage({
       renewalDate: c.renewalDate ? c.renewalDate.slice(0, 10) : '',
       autoRenew: Boolean(c.autoRenew),
       hoursIncluded: c.hoursIncluded ?? 0,
+      hourlyRate: c.hourlyRate ?? 0,
+      supportPeriod: c.supportPeriod ?? (defaultKind === 'hourly' ? 'lifelong_with_payment' : ''),
+      supportDurationMonths: c.supportDurationMonths ?? 6,
+      prodReleaseDate: c.prodReleaseDate ? c.prodReleaseDate.slice(0, 10) : '',
       status: c.status ?? 'active',
       notes: c.notes ?? '',
       slaPolicyId: typeof c.slaPolicyId === 'object' && c.slaPolicyId ? c.slaPolicyId._id : String(c.slaPolicyId ?? ''),
@@ -353,7 +464,8 @@ function ContractsListPage({
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!token || !form.accountId || !form.title.trim()) return;
-    const payload = {
+    const isHourly = showHourly || form.kind === 'hourly';
+    const payload: Record<string, unknown> = {
       accountId: form.accountId,
       title: form.title.trim(),
       kind: form.kind,
@@ -369,8 +481,18 @@ function ContractsListPage({
       notes: form.notes.trim() || undefined,
       slaPolicyId: form.slaPolicyId || undefined,
     };
+    if (isHourly) {
+      payload.hourlyRate = Number(form.hourlyRate);
+      payload.supportPeriod = form.supportPeriod || 'lifelong_with_payment';
+      if (form.supportPeriod === 'from_prod_release' || form.supportPeriod === 'from_last_invoice') {
+        payload.supportDurationMonths = Number(form.supportDurationMonths) || undefined;
+      }
+      if (form.supportPeriod === 'from_prod_release') {
+        payload.prodReleaseDate = form.prodReleaseDate || undefined;
+      }
+    }
     if (editingId) await contractsApi.update(editingId, payload, token);
-    else await contractsApi.create(payload as typeof payload & { startDate: string; accountId: string }, token);
+    else await contractsApi.create(payload as { startDate: string; accountId: string }, token);
     setModal(false);
     load();
   }
@@ -426,8 +548,18 @@ function ContractsListPage({
             <tr>
               <th className="text-left px-4 py-3 font-medium">Title</th>
               <th className="text-left px-4 py-3 font-medium">Account</th>
-              <th className="text-left px-4 py-3 font-medium">Kind</th>
-              <th className="text-right px-4 py-3 font-medium">Value</th>
+              {showHourly ? (
+                <>
+                  <th className="text-right px-4 py-3 font-medium">Rate</th>
+                  <th className="text-left px-4 py-3 font-medium">Support</th>
+                  <th className="text-left px-4 py-3 font-medium">Support ends</th>
+                </>
+              ) : (
+                <>
+                  <th className="text-left px-4 py-3 font-medium">Kind</th>
+                  <th className="text-right px-4 py-3 font-medium">Value</th>
+                </>
+              )}
               <th className="text-left px-4 py-3 font-medium">Status</th>
               <th className="text-left px-4 py-3 font-medium">Renewal</th>
               <th className="text-right px-4 py-3 font-medium">Actions</th>
@@ -438,8 +570,20 @@ function ContractsListPage({
               <tr key={c._id} className="border-t border-[color:var(--border-subtle)]">
                 <td className="px-4 py-3 font-medium">{c.title}</td>
                 <td className="px-4 py-3 text-[color:var(--text-muted)]">{accountLabel(c.accountId)}</td>
-                <td className="px-4 py-3 uppercase text-[11px]">{c.kind ?? 'other'}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{money(c.value, c.currency)}</td>
+                {showHourly ? (
+                  <>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {c.hourlyRate != null ? `${moneyRate(c.hourlyRate, c.currency)}/h` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-[color:var(--text-muted)]">{supportSummary(c)}</td>
+                    <td className="px-4 py-3 text-[color:var(--text-muted)]">{supportEndLabel(c)}</td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-4 py-3 uppercase text-[11px]">{c.kind ?? 'other'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{money(c.value, c.currency)}</td>
+                  </>
+                )}
                 <td className="px-4 py-3 capitalize">{c.status}</td>
                 <td className="px-4 py-3 text-[color:var(--text-muted)]">
                   {c.renewalDate ? new Date(c.renewalDate).toLocaleDateString() : '—'}
@@ -466,7 +610,7 @@ function ContractsListPage({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-[color:var(--text-muted)]">
+                <td colSpan={showHourly ? 8 : 7} className="px-4 py-10 text-center text-[color:var(--text-muted)]">
                   No agreements in this view yet.
                 </td>
               </tr>
@@ -495,6 +639,7 @@ function ContractsListPage({
         accounts={accounts}
         slaPolicies={slaPolicies}
         showHours={showHours}
+        showHourly={showHourly}
         onClose={() => setModal(false)}
         onSubmit={save}
       />
@@ -523,6 +668,19 @@ export function ContractsRetainers() {
       defaultKind="retainer"
       showHours
       managePerms={['taskflow.contracts.retainer.manage']}
+    />
+  );
+}
+
+export function ContractsHourly() {
+  return (
+    <ContractsListPage
+      title="Hourly"
+      subtitle="Hourly charge agreements with rate and support coverage windows."
+      kinds={['hourly']}
+      defaultKind="hourly"
+      showHourly
+      managePerms={['taskflow.contracts.msa.manage', 'taskflow.contracts.retainer.manage']}
     />
   );
 }

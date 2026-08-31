@@ -129,6 +129,7 @@ import ContractsDashboard from './pages/contracts/ContractsDashboard';
 import {
   ContractsMsas,
   ContractsRetainers,
+  ContractsHourly,
   ContractsRenewals,
   ContractsSlas,
 } from './pages/contracts/ContractsSections';
@@ -341,6 +342,7 @@ function AppRoutes() {
           <Route path="/contracts" element={<ContractsDashboard />} />
           <Route path="/contracts/msas" element={<ContractsMsas />} />
           <Route path="/contracts/retainers" element={<ContractsRetainers />} />
+          <Route path="/contracts/hourly" element={<ContractsHourly />} />
           <Route path="/contracts/renewals" element={<ContractsRenewals />} />
           <Route path="/contracts/slas" element={<ContractsSlas />} />
         </Route>
