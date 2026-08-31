@@ -9,6 +9,8 @@ export const createOrgSchema = z.object({
   contactPhone: z.string().optional(),
   adminName: z.string().min(1).trim(),
   adminEmail: z.string().email().toLowerCase().trim(),
+  leadId: z.string().optional(),
+  dealId: z.string().optional(),
 });
 
 export const updateOrgSchema = z.object({

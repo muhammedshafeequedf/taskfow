@@ -315,16 +315,19 @@ async function convertAcceptedQuote(
       const quantity = l.quantity ?? 1;
       const unitPrice = l.unitPrice ?? 0;
       const taxRate = l.taxRate ?? 0;
-      const amount = l.amount ?? round2(quantity * unitPrice);
+      const discountPercent = (l as { discountPercent?: number }).discountPercent ?? 0;
+      const billingType = (l as { billingType?: string }).billingType ?? 'fixed';
+      const gross = quantity * unitPrice;
+      const amount = round2(gross * (1 - Math.min(100, Math.max(0, discountPercent)) / 100));
       return {
-        description:
-          l.billingType === 'hourly'
-            ? `${l.description} (${quantity} hrs @ ${unitPrice}/hr)`
-            : l.description,
+        description: l.description,
         quantity,
         unitPrice,
         taxRate,
         amount,
+        billingType,
+        category: (l as { category?: string }).category,
+        discountPercent,
         sourceType: 'manual' as const,
       };
     });

@@ -53,6 +53,12 @@ export async function listInvoices(req: Request & { user?: AuthPayload }, res: R
   res.json({ success: true, data });
 }
 
+export async function getInvoice(req: Request & { user?: AuthPayload }, res: Response) {
+  uid(req);
+  const data = await billing.getInvoiceById(req.params.id, ws(req));
+  res.json({ success: true, data });
+}
+
 export async function createInvoice(req: Request & { user?: AuthPayload }, res: Response) {
   const data = await billing.createInvoice(ws(req), req.body, uid(req));
   res.status(201).json({ success: true, data });

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   adminCustomerApi,
@@ -96,6 +96,7 @@ export default function CustomerOrgDetail() {
 
   // Org
   const [org, setOrg] = useState<CustomerOrg | null>(null);
+  const [projectCount, setProjectCount] = useState(0);
   const [orgLoading, setOrgLoading] = useState(true);
   const [orgError, setOrgError] = useState('');
 
@@ -147,6 +148,9 @@ export default function CustomerOrgDetail() {
           contactEmail: res.data.org.contactEmail,
           contactPhone: res.data.org.contactPhone ?? '',
           description: res.data.org.description ?? '',
+        });
+        adminCustomerApi.listProjects(id, token).then((pRes) => {
+          if (pRes.success && pRes.data) setProjectCount(pRes.data.mappings?.length ?? 0);
         });
       } else {
         setOrgError((res as { message?: string }).message ?? 'Failed to load organisation');
@@ -384,7 +388,80 @@ export default function CustomerOrgDetail() {
 
           {/* Overview Tab */}
           {activeTab === 'overview' && (
-            <div className="max-w-2xl">
+            <div className="max-w-2xl space-y-4">
+              {(org.linkedLead || (org.linkedDeals && org.linkedDeals.length > 0)) && (
+                <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
+                  <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-3">CRM records</h2>
+                  <dl className="space-y-2 text-sm">
+                    {org.linkedLead && (
+                      <div>
+                        <dt className="text-[color:var(--text-muted)] text-xs">Linked lead</dt>
+                        <dd className="mt-0.5">
+                          <Link to={`/crm/leads/${org.linkedLead._id}`} className="text-[color:var(--accent)] hover:underline">
+                            {org.linkedLead.title}
+                          </Link>
+                          <span className="text-[color:var(--text-muted)]"> · {org.linkedLead.status}</span>
+                        </dd>
+                      </div>
+                    )}
+                    {org.linkedDeals && org.linkedDeals.length > 0 && (
+                      <div>
+                        <dt className="text-[color:var(--text-muted)] text-xs">Linked deals</dt>
+                        <dd className="mt-1 space-y-1">
+                          {org.linkedDeals.map((d) => (
+                            <div key={d._id}>
+                              <Link to="/crm/deals" className="text-[color:var(--accent)] hover:underline">{d.title}</Link>
+                              <span className="text-[color:var(--text-muted)]"> · {d.status}</span>
+                            </div>
+                          ))}
+                        </dd>
+                      </div>
+                    )}
+                    {org.linkedAccount && (
+                      <div>
+                        <dt className="text-[color:var(--text-muted)] text-xs">CRM account</dt>
+                        <dd className="mt-0.5 text-[color:var(--text-primary)]">
+                          {org.linkedAccount.name}
+                          {org.linkedAccount.type ? (
+                            <span className="text-[color:var(--text-muted)]"> · {org.linkedAccount.type}</span>
+                          ) : null}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
+                <h2 className="text-sm font-semibold text-[color:var(--text-primary)] mb-3">Onboarding checklist</h2>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2 text-green-400">
+                    <span aria-hidden>✓</span>
+                    <span>Portal admin invited by email</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-2">
+                    <span className={org.linkedAccount || org.crmAccountId ? 'text-green-400' : 'text-[color:var(--text-primary)]'}>
+                      {org.linkedAccount || org.crmAccountId ? '✓' : '○'} CRM account linked
+                    </span>
+                    {(org.linkedAccount || org.crmAccountId) && (
+                      <span className="text-xs text-[color:var(--text-muted)]">{org.linkedAccount?.name ?? 'Synced'}</span>
+                    )}
+                  </li>
+                  <li className="flex items-center justify-between gap-2">
+                    <span className={projectCount > 0 ? 'text-green-400' : 'text-[color:var(--text-primary)]'}>
+                      {projectCount > 0 ? '✓' : '○'} Map at least one project
+                    </span>
+                    <button type="button" onClick={() => setActiveTab('projects')} className="text-xs text-[color:var(--accent)] hover:underline">
+                      {projectCount > 0 ? 'View projects' : 'Add project'}
+                    </button>
+                  </li>
+                  <li className="flex items-center justify-between gap-2">
+                    <span className="text-[color:var(--text-primary)]">○ Create commercial agreement</span>
+                    <Link to="/crm/contracts" className="text-xs text-[color:var(--accent)] hover:underline">CRM contracts</Link>
+                  </li>
+                </ul>
+              </div>
+
               <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">Organisation Details</h2>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { adminCustomerApi, type CustomerOrg } from '../../lib/api';
+import { adminCustomerApi, crmApi, type CrmDeal, type CrmLead, type CustomerOrg } from '../../lib/api';
 import { FiPlus, FiArrowRight, FiX, FiBriefcase } from 'react-icons/fi';
 
 function statusColor(status: string): string {
@@ -36,6 +36,62 @@ export default function CustomerOrgs() {
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [crmLinkMode, setCrmLinkMode] = useState<'none' | 'lead' | 'deal'>('none');
+  const [crmLinkId, setCrmLinkId] = useState('');
+  const [unlinkedLeads, setUnlinkedLeads] = useState<CrmLead[]>([]);
+  const [unlinkedDeals, setUnlinkedDeals] = useState<CrmDeal[]>([]);
+
+  const emptyForm = () => ({
+    name: '',
+    contactEmail: '',
+    adminName: '',
+    adminEmail: '',
+    contactPhone: '',
+    description: '',
+  });
+
+  function openCreateModal() {
+    setShowCreate(true);
+    setCreateError('');
+    setCrmLinkMode('none');
+    setCrmLinkId('');
+    setForm(emptyForm());
+    if (token) {
+      crmApi.listLeads(token, { unlinked: true, limit: 100 }).then((res) => {
+        if (res.success && res.data) setUnlinkedLeads(res.data.data ?? []);
+      });
+      crmApi.listDeals(token, { unlinked: true }).then((res) => {
+        if (res.success && res.data) setUnlinkedDeals(Array.isArray(res.data) ? res.data : []);
+      });
+    }
+  }
+
+  function onCrmLinkSelect(mode: 'none' | 'lead' | 'deal', id: string) {
+    setCrmLinkMode(mode);
+    setCrmLinkId(id);
+    if (!id) return;
+    if (mode === 'lead') {
+      const lead = unlinkedLeads.find((l) => l._id === id);
+      if (lead) {
+        setForm((f) => ({
+          ...f,
+          name: lead.companyName || lead.title || f.name,
+          contactEmail: lead.contactEmail || f.contactEmail,
+          contactPhone: lead.contactPhone || f.contactPhone,
+          adminName: lead.contactName || lead.companyName || lead.title || f.adminName,
+          adminEmail: lead.contactEmail || f.adminEmail,
+        }));
+      }
+    } else if (mode === 'deal') {
+      const deal = unlinkedDeals.find((d) => d._id === id);
+      if (deal) {
+        setForm((f) => ({
+          ...f,
+          name: deal.title || f.name,
+        }));
+      }
+    }
+  }
 
   function loadOrgs() {
     if (!token) return;
@@ -62,13 +118,17 @@ export default function CustomerOrgs() {
         adminEmail: form.adminEmail,
         contactPhone: form.contactPhone || undefined,
         description: form.description || undefined,
+        leadId: crmLinkMode === 'lead' && crmLinkId ? crmLinkId : undefined,
+        dealId: crmLinkMode === 'deal' && crmLinkId ? crmLinkId : undefined,
       },
       token
     );
     setCreating(false);
     if (res.success && res.data) {
       setShowCreate(false);
-      setForm({ name: '', contactEmail: '', adminName: '', adminEmail: '', contactPhone: '', description: '' });
+      setForm(emptyForm());
+      setCrmLinkMode('none');
+      setCrmLinkId('');
       navigate(`/admin/customer-orgs/${res.data.org._id}`);
     } else {
       setCreateError((res as { message?: string }).message ?? 'Create failed');
@@ -90,7 +150,7 @@ export default function CustomerOrgs() {
           </div>
           <button
             type="button"
-            onClick={() => { setShowCreate(true); setCreateError(''); setForm({ name: '', contactEmail: '', adminName: '', adminEmail: '', contactPhone: '', description: '' }); }}
+            onClick={openCreateModal}
             className="btn-primary flex items-center gap-2"
           >
             <FiPlus /> Create Organisation
@@ -107,7 +167,7 @@ export default function CustomerOrgs() {
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-12 text-center">
             <FiBriefcase className="mx-auto text-4xl text-[color:var(--text-muted)] mb-3" />
             <p className="text-sm text-[color:var(--text-muted)] mb-4">No customer organisations yet.</p>
-            <button type="button" onClick={() => setShowCreate(true)} className="btn-primary">Create Organisation</button>
+            <button type="button" onClick={openCreateModal} className="btn-primary">Create Organisation</button>
           </div>
         ) : (
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] overflow-hidden">
@@ -176,7 +236,53 @@ export default function CustomerOrgs() {
             {createError && (
               <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{createError}</div>
             )}
+            <p className="text-xs text-[color:var(--text-muted)] mb-4">
+              Prefer onboarding via CRM → convert a qualified lead for automatic portal setup.
+            </p>
             <form onSubmit={handleCreate} className="space-y-4">
+              <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] p-4 space-y-3">
+                <p className="text-xs font-semibold text-[color:var(--text-muted)] uppercase tracking-wide">Link to CRM (optional)</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['none', 'lead', 'deal'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => onCrmLinkSelect(mode, '')}
+                      className={`px-3 py-1.5 rounded-lg text-xs border transition ${
+                        crmLinkMode === mode
+                          ? 'border-[color:var(--accent)] text-[color:var(--accent)] bg-[color:var(--accent)]/10'
+                          : 'border-[color:var(--border-subtle)] text-[color:var(--text-muted)]'
+                      }`}
+                    >
+                      {mode === 'none' ? 'No link' : mode === 'lead' ? 'CRM lead' : 'CRM deal'}
+                    </button>
+                  ))}
+                </div>
+                {crmLinkMode === 'lead' && (
+                  <select
+                    value={crmLinkId}
+                    onChange={(e) => onCrmLinkSelect('lead', e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Select unlinked lead…</option>
+                    {unlinkedLeads.map((l) => (
+                      <option key={l._id} value={l._id}>{l.title}{l.companyName ? ` · ${l.companyName}` : ''}</option>
+                    ))}
+                  </select>
+                )}
+                {crmLinkMode === 'deal' && (
+                  <select
+                    value={crmLinkId}
+                    onChange={(e) => onCrmLinkSelect('deal', e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Select unlinked deal…</option>
+                    {unlinkedDeals.map((d) => (
+                      <option key={d._id} value={d._id}>{d.title}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-[color:var(--text-primary)] mb-1.5">Organisation Name <span className="text-red-400">*</span></label>
                 <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required placeholder="Acme Corp" className={inputClass} />

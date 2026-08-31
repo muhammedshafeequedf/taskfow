@@ -165,8 +165,10 @@ export async function listLeads(req: Request & { user?: AuthPayload }, res: Resp
     limit?: string;
     mine?: string;
     campaignId?: string;
+    unlinked?: string;
   };
   const assigneeId = q.mine === '1' || q.mine === 'true' ? uid(req) : q.assigneeId;
+  const unlinked = q.unlinked === '1' || q.unlinked === 'true';
   const data = await leadsService.listLeads(ws(req), {
     status: q.status,
     source: q.source,
@@ -176,6 +178,7 @@ export async function listLeads(req: Request & { user?: AuthPayload }, res: Resp
     page: q.page ? parseInt(q.page, 10) : undefined,
     limit: q.limit ? parseInt(q.limit, 10) : undefined,
     campaignId: q.campaignId,
+    unlinked: unlinked || undefined,
   });
   res.json({ success: true, data });
 }
@@ -230,8 +233,9 @@ export async function convertLead(req: Request & { user?: AuthPayload }, res: Re
 
 export async function listDeals(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { status?: string; stageId?: string };
-  const data = await dealsService.listDeals(ws(req), q);
+  const q = req.query as { status?: string; stageId?: string; unlinked?: string };
+  const unlinked = q.unlinked === '1' || q.unlinked === 'true';
+  const data = await dealsService.listDeals(ws(req), { ...q, unlinked: unlinked || undefined });
   res.json({ success: true, data });
 }
 

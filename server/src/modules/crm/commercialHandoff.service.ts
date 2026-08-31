@@ -35,7 +35,18 @@ export type CommercialHandoffResult = {
   customerOrgId?: string;
   projectId?: string;
   skipped: string[];
+  warnings: string[];
 };
+
+const SKIP_MESSAGES: Record<string, string> = {
+  portal_org_no_email: 'Portal organisation was not created: customer email is missing.',
+  portal_org_skipped: 'Portal organisation was not created (opted out).',
+  project_skipped: 'Starter project was not created (opted out).',
+};
+
+function warningsFromSkipped(skipped: string[]): string[] {
+  return skipped.map((code) => SKIP_MESSAGES[code] ?? code);
+}
 
 export function projectKeyFromTitle(title: string): string {
   const letters = title.replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase();
@@ -258,7 +269,7 @@ export async function runCommercialHandoff(opts: CommercialHandoffOpts): Promise
     }).catch(() => undefined);
   }
 
-  return { customerOrgId, projectId, skipped };
+  return { customerOrgId, projectId, skipped, warnings: warningsFromSkipped(skipped) };
 }
 
 export async function resolveProjectHourlyRate(

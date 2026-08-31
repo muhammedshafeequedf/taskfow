@@ -2,12 +2,27 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export type BillingInvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'void';
 
+export type BillingInvoiceLineType =
+  | 'hourly'
+  | 'fixed'
+  | 'milestone'
+  | 'retainer'
+  | 'amc'
+  | 'support'
+  | 'expense';
+
 export interface IBillingInvoiceLine {
   description: string;
   quantity: number;
   unitPrice: number;
   taxRate: number;
   amount: number;
+  billingType?: BillingInvoiceLineType;
+  category?: string;
+  discountPercent?: number;
+  periodStart?: Date;
+  periodEnd?: Date;
+  hsnSac?: string;
   sourceType?: 'manual' | 'subscription' | 'time' | 'milestone';
   sourceId?: string;
 }
@@ -15,6 +30,7 @@ export interface IBillingInvoiceLine {
 export interface IBillingInvoice extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
   accountId: mongoose.Types.ObjectId;
+  customerOrgId?: mongoose.Types.ObjectId;
   subscriptionId?: mongoose.Types.ObjectId;
   contractId?: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
@@ -30,6 +46,10 @@ export interface IBillingInvoice extends Document {
   lines: IBillingInvoiceLine[];
   notes?: string;
   taxCode?: string;
+  paymentTerms?: string;
+  poNumber?: string;
+  servicePeriodStart?: Date;
+  servicePeriodEnd?: Date;
   postedToAccounts: boolean;
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -43,6 +63,16 @@ const lineSchema = new Schema(
     unitPrice: { type: Number, default: 0 },
     taxRate: { type: Number, default: 0 },
     amount: { type: Number, default: 0 },
+    billingType: {
+      type: String,
+      enum: ['hourly', 'fixed', 'milestone', 'retainer', 'amc', 'support', 'expense'],
+      default: 'fixed',
+    },
+    category: { type: String },
+    discountPercent: { type: Number, default: 0 },
+    periodStart: { type: Date },
+    periodEnd: { type: Date },
+    hsnSac: { type: String },
     sourceType: { type: String, enum: ['manual', 'subscription', 'time', 'milestone'], default: 'manual' },
     sourceId: { type: String },
   },
@@ -53,6 +83,7 @@ const billingInvoiceSchema = new Schema<IBillingInvoice>(
   {
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount', required: true, index: true },
+    customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
     subscriptionId: { type: Schema.Types.ObjectId, ref: 'BillingSubscription' },
     contractId: { type: Schema.Types.ObjectId, ref: 'CrmContract' },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
@@ -73,6 +104,10 @@ const billingInvoiceSchema = new Schema<IBillingInvoice>(
     lines: { type: [lineSchema], default: [] },
     notes: { type: String },
     taxCode: { type: String },
+    paymentTerms: { type: String },
+    poNumber: { type: String },
+    servicePeriodStart: { type: Date },
+    servicePeriodEnd: { type: Date },
     postedToAccounts: { type: Boolean, default: false },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },

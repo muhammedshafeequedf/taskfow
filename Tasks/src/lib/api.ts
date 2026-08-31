@@ -2061,6 +2061,18 @@ export interface CustomerOrg {
   description?: string;
   status: string;
   createdAt: string;
+  crmAccountId?: string;
+  memberCount?: number;
+  linkedLead?: { _id: string; title: string; status: string };
+  linkedDeals?: Array<{ _id: string; title: string; status: string; value?: number; currency?: string }>;
+  linkedAccount?: { _id: string; name: string; type?: string };
+}
+
+export interface CommercialHandoffResult {
+  customerOrgId?: string;
+  projectId?: string;
+  skipped?: string[];
+  warnings?: string[];
 }
 
 export interface CreateRequestInput {
@@ -2085,6 +2097,8 @@ export interface CreateOrgInput {
   adminEmail: string;
   contactPhone?: string;
   description?: string;
+  leadId?: string;
+  dealId?: string;
 }
 
 // ── CRM API ────────────────────────────────────────────────────────────────
@@ -2410,6 +2424,7 @@ export const crmApi = {
       limit?: number;
       mine?: boolean;
       campaignId?: string;
+      unlinked?: boolean;
     }
   ) => {
     const p = new URLSearchParams();
@@ -2422,6 +2437,7 @@ export const crmApi = {
     if (params?.limit) p.set('limit', String(params.limit));
     if (params?.mine) p.set('mine', '1');
     if (params?.campaignId) p.set('campaignId', params.campaignId);
+    if (params?.unlinked) p.set('unlinked', '1');
     const q = p.toString();
     return api.get<CrmLeadList>(`/crm/leads${q ? `?${q}` : ''}`, token);
   },
@@ -2455,11 +2471,18 @@ export const crmApi = {
   ) => {
     const payload =
       typeof body === 'string' || body === undefined ? { pipelineId: body } : body;
-    return api.post(`/crm/leads/${id}/convert`, payload, token);
+    return api.post<{
+      deal?: { _id: string };
+      customerOrg?: CustomerOrg;
+      handoff?: CommercialHandoffResult;
+    }>(`/crm/leads/${id}/convert`, payload, token);
   },
-  listDeals: (token: string, params?: { status?: string }) => {
-    const q = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
-    return api.get<CrmDeal[]>(`/crm/deals${q}`, token);
+  listDeals: (token: string, params?: { status?: string; unlinked?: boolean }) => {
+    const p = new URLSearchParams();
+    if (params?.status) p.set('status', params.status);
+    if (params?.unlinked) p.set('unlinked', '1');
+    const q = p.toString();
+    return api.get<CrmDeal[]>(`/crm/deals${q ? `?${q}` : ''}`, token);
   },
   createDeal: (data: Partial<CrmDeal>, token: string) => api.post('/crm/deals', data, token),
   updateDeal: (id: string, data: Partial<CrmDeal>, token: string) => api.patch(`/crm/deals/${id}`, data, token),
@@ -2610,13 +2633,29 @@ export interface BillingSubscription {
   contractId?: string;
 }
 
+export type BillingInvoiceLineType =
+  | 'hourly'
+  | 'fixed'
+  | 'milestone'
+  | 'retainer'
+  | 'amc'
+  | 'support'
+  | 'expense';
+
 export interface BillingInvoiceLine {
   description: string;
   quantity: number;
   unitPrice: number;
   taxRate: number;
   amount: number;
+  billingType?: BillingInvoiceLineType;
+  category?: string;
+  discountPercent?: number;
+  periodStart?: string;
+  periodEnd?: string;
+  hsnSac?: string;
   sourceType?: string;
+  sourceId?: string;
 }
 
 export interface BillingInvoice {
@@ -2633,9 +2672,15 @@ export interface BillingInvoice {
   lines: BillingInvoiceLine[];
   notes?: string;
   taxCode?: string;
+  paymentTerms?: string;
+  poNumber?: string;
+  servicePeriodStart?: string;
+  servicePeriodEnd?: string;
   postedToAccounts?: boolean;
-  accountId: string | { _id: string; name: string };
-  projectId?: string;
+  accountId: string | { _id: string; name: string; type?: string; customerOrgId?: string };
+  projectId?: string | { _id: string; name?: string; key?: string };
+  contractId?: string | { _id: string; title?: string; kind?: string };
+  customerOrgId?: string | { _id: string; name?: string; contactEmail?: string };
   subscriptionId?: string;
 }
 
@@ -2674,6 +2719,7 @@ export const billingApi = {
     const q = p.toString();
     return api.get<BillingInvoice[]>(`/billing/invoices${q ? `?${q}` : ''}`, token);
   },
+  getInvoice: (id: string, token: string) => api.get<BillingInvoice>(`/billing/invoices/${id}`, token),
   createInvoice: (data: Record<string, unknown>, token: string) =>
     api.post<BillingInvoice>('/billing/invoices', data, token),
   updateInvoice: (id: string, data: Record<string, unknown>, token: string) =>

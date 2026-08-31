@@ -7,9 +7,15 @@ import * as projectsService from '../../projects/projects.service';
 import { ApiError } from '../../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
 
-export async function listDeals(workspaceId: string | null | undefined, opts: { status?: string; stageId?: string } = {}) {
+export async function listDeals(
+  workspaceId: string | null | undefined,
+  opts: { status?: string; stageId?: string; unlinked?: boolean } = {}
+) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
+  if (opts.unlinked) {
+    filter.$or = [{ customerOrgId: null }, { customerOrgId: { $exists: false } }];
+  }
   if (opts.status) filter.status = opts.status;
   if (opts.stageId) filter.stageId = opts.stageId;
   return CrmDeal.find(filter)

@@ -279,10 +279,15 @@ export async function listLeads(
     page?: number;
     limit?: number;
     campaignId?: string;
+    unlinked?: boolean;
   } = {}
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
+  if (opts.unlinked) {
+    filter.$or = [{ customerOrgId: null }, { customerOrgId: { $exists: false } }];
+    filter.status = { $ne: 'unqualified' };
+  }
   const status = normalizeLeadStatus(opts.status);
   if (status) filter.status = status;
   if (opts.source?.trim()) filter.source = opts.source.trim();
@@ -626,30 +631,32 @@ export async function convertLead(
     /* best-effort */
   }
 
-  let handoff: unknown;
-  try {
-    const { runCommercialHandoff } = await import('../commercialHandoff.service');
-    handoff = await runCommercialHandoff({
-      workspaceId: orgId,
-      userId,
-      customerOrgId: customerOrgId || undefined,
-      portalOrg: opts.portalOrg,
-      dealId: String(deal._id),
-      leadId: String(lead._id),
-      projectTitle: lead.title,
-      createProject: opts.createProject !== false,
-      createPortalOrg,
-    });
-    const hid = (handoff as { customerOrgId?: string })?.customerOrgId;
-    if (hid) {
-      customerOrgId = hid;
-      lead.customerOrgId = new mongoose.Types.ObjectId(hid);
-      await lead.save();
-      await CrmDeal.findByIdAndUpdate(deal._id, { $set: { customerOrgId: hid } });
-      await upsertPeopleFromLead(orgId, { ...lead.toObject(), customerOrgId: hid });
-    }
-  } catch (err) {
-    console.error('commercialHandoff:', err);
+  const { runCommercialHandoff } = await import('../commercialHandoff.service');
+  const handoff = await runCommercialHandoff({
+    workspaceId: orgId,
+    userId,
+    customerOrgId: customerOrgId || undefined,
+    portalOrg: opts.portalOrg,
+    dealId: String(deal._id),
+    leadId: String(lead._id),
+    projectTitle: lead.title,
+    createProject: opts.createProject !== false,
+    createPortalOrg,
+  });
+
+  if (createPortalOrg && !handoff.customerOrgId) {
+    const msg = handoff.skipped.includes('portal_org_no_email')
+      ? 'Customer email is required to create a portal organisation'
+      : 'Failed to create portal organisation during conversion';
+    throw new ApiError(400, msg);
+  }
+
+  if (handoff.customerOrgId) {
+    customerOrgId = handoff.customerOrgId;
+    lead.customerOrgId = new mongoose.Types.ObjectId(handoff.customerOrgId);
+    await lead.save();
+    await CrmDeal.findByIdAndUpdate(deal._id, { $set: { customerOrgId: handoff.customerOrgId } });
+    await upsertPeopleFromLead(orgId, { ...lead.toObject(), customerOrgId: handoff.customerOrgId });
   }
 
   const org = customerOrgId

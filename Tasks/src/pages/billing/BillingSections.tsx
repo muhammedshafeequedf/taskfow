@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppDisplayName } from '../../hooks/useAppDisplayName';
 import { canAny } from '../../utils/moduleAccess';
 import { ExportButton } from '../../components/moduleKit';
 import {
@@ -11,6 +12,7 @@ import {
   type BillingTaxRule,
   type CrmAccount,
 } from '../../lib/api';
+import { downloadInvoicePdfFromInvoice } from '../../lib/invoicePdf';
 
 const money = (n: number, currency = 'USD') =>
   new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(n || 0);
@@ -303,24 +305,14 @@ export function BillingSubscriptions() {
 
 export function BillingInvoices() {
   const { token, user } = useAuth();
+  const companyName = useAppDisplayName();
   const canCreate = canAny(user, 'taskflow.billing.invoice.create', 'taskflow.billing.invoice.manage');
   const canManage = canAny(user, 'taskflow.billing.invoice.manage');
   const accounts = useAccounts(token);
   const [rows, setRows] = useState<BillingInvoice[]>([]);
-  const [taxRules, setTaxRules] = useState<BillingTaxRule[]>([]);
   const [filter, setFilter] = useState('');
-  const [modal, setModal] = useState(false);
   const [payFor, setPayFor] = useState<BillingInvoice | null>(null);
   const [payAmount, setPayAmount] = useState(0);
-  const [form, setForm] = useState({
-    accountId: '',
-    description: 'Professional services',
-    quantity: 1,
-    unitPrice: 0,
-    taxRate: 0,
-    dueDate: '',
-    notes: '',
-  });
 
   const load = () => {
     if (!token) return;
@@ -332,43 +324,6 @@ export function BillingInvoices() {
   useEffect(() => {
     load();
   }, [token, filter]);
-
-  useEffect(() => {
-    if (!token) return;
-    billingApi.listTax(token).then((res) => {
-      if (res.success && res.data) {
-        const rules = res.data as BillingTaxRule[];
-        setTaxRules(rules);
-        const def = rules.find((r) => r.enabled);
-        if (def) setForm((f) => ({ ...f, taxRate: def.rate }));
-      }
-    });
-  }, [token]);
-
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    if (!token || !form.accountId) return;
-    await billingApi.createInvoice(
-      {
-        accountId: form.accountId,
-        dueDate: form.dueDate || undefined,
-        notes: form.notes.trim() || undefined,
-        taxCode: taxRules.find((t) => t.rate === form.taxRate && t.enabled)?.code,
-        lines: [
-          {
-            description: form.description.trim() || 'Line item',
-            quantity: Number(form.quantity) || 1,
-            unitPrice: Number(form.unitPrice) || 0,
-            taxRate: Number(form.taxRate) || 0,
-            sourceType: 'manual',
-          },
-        ],
-      },
-      token
-    );
-    setModal(false);
-    load();
-  }
 
   async function setStatus(id: string, status: string) {
     if (!token || !canManage) return;
@@ -444,17 +399,12 @@ export function BillingInvoices() {
             ]}
           />
           {canCreate && (
-            <button
-              type="button"
-              className="btn-primary px-4 py-2 rounded-lg text-sm"
-              disabled={accounts.length === 0}
-              onClick={() => {
-                setForm((f) => ({ ...f, accountId: accounts[0]?._id ?? '' }));
-                setModal(true);
-              }}
+            <Link
+              to="/billing/invoices/new"
+              className={`btn-primary px-4 py-2 rounded-lg text-sm inline-flex items-center ${accounts.length === 0 ? 'pointer-events-none opacity-50' : ''}`}
             >
               New invoice
-            </button>
+            </Link>
           )}
         </div>
       </div>
@@ -475,7 +425,11 @@ export function BillingInvoices() {
           <tbody>
             {rows.map((inv) => (
               <tr key={inv._id} className="border-t border-[color:var(--border-subtle)]">
-                <td className="px-4 py-3 font-medium">{inv.number}</td>
+                <td className="px-4 py-3 font-medium">
+                  <Link to={`/billing/invoices/${inv._id}`} className="text-[color:var(--accent)] hover:underline">
+                    {inv.number}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 text-[color:var(--text-muted)]">
                   {typeof inv.accountId === 'object' && inv.accountId?._id ? (
                     <Link to={`/crm/accounts/${inv.accountId._id}`} className="text-[color:var(--accent)] hover:underline">
@@ -512,6 +466,18 @@ export function BillingInvoices() {
                 </td>
                 <td className="px-4 py-3 capitalize">{inv.status}</td>
                 <td className="px-4 py-3 text-right space-x-2">
+                  <button
+                    type="button"
+                    className="text-xs text-[color:var(--text-muted)] hover:underline"
+                    onClick={() => downloadInvoicePdfFromInvoice(inv, companyName)}
+                  >
+                    PDF
+                  </button>
+                  {canManage && inv.status === 'draft' && (
+                    <Link to={`/billing/invoices/${inv._id}/edit`} className="text-xs text-[color:var(--accent)] hover:underline">
+                      Edit
+                    </Link>
+                  )}
                   {canManage && inv.status === 'draft' && (
                     <button type="button" className="text-xs text-[color:var(--accent)] hover:underline" onClick={() => setStatus(inv._id, 'sent')}>
                       Send
@@ -540,88 +506,6 @@ export function BillingInvoices() {
           </tbody>
         </table>
       </div>
-
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <form onSubmit={create} className="w-full max-w-lg rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-6 space-y-3">
-            <h2 className="text-lg font-semibold">New invoice</h2>
-            <label className="block text-xs text-[color:var(--text-muted)]">
-              Account
-              <select
-                className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                value={form.accountId}
-                onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
-                required
-              >
-                {accounts.map((a) => (
-                  <option key={a._id} value={a._id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-xs text-[color:var(--text-muted)]">
-              Description
-              <input
-                className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                required
-              />
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              <label className="block text-xs text-[color:var(--text-muted)]">
-                Qty
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                  value={form.quantity}
-                  onChange={(e) => setForm((f) => ({ ...f, quantity: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="block text-xs text-[color:var(--text-muted)]">
-                Unit price
-                <input
-                  type="number"
-                  min={0}
-                  className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                  value={form.unitPrice}
-                  onChange={(e) => setForm((f) => ({ ...f, unitPrice: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="block text-xs text-[color:var(--text-muted)]">
-                Tax %
-                <input
-                  type="number"
-                  min={0}
-                  className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                  value={form.taxRate}
-                  onChange={(e) => setForm((f) => ({ ...f, taxRate: Number(e.target.value) }))}
-                />
-              </label>
-            </div>
-            <label className="block text-xs text-[color:var(--text-muted)]">
-              Due date
-              <input
-                type="date"
-                className="mt-1 w-full rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-sm"
-                value={form.dueDate}
-                onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-              />
-            </label>
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="px-3 py-2 text-sm rounded-lg border border-[color:var(--border-subtle)]" onClick={() => setModal(false)}>
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary px-4 py-2 rounded-lg text-sm">
-                Create draft
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {payFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -663,6 +547,7 @@ export function BillingInvoices() {
 
 export function BillingTimeToInvoice() {
   const { token, user } = useAuth();
+  const navigate = useNavigate();
   const canManage = canAny(
     user,
     'taskflow.billing.time_to_invoice.manage',
@@ -684,6 +569,7 @@ export function BillingTimeToInvoice() {
       hours: number;
       estimatedValue: number;
       rate: number;
+      workLogIds?: string[];
     }>;
   } | null>(null);
   const [message, setMessage] = useState('');
@@ -699,14 +585,15 @@ export function BillingTimeToInvoice() {
     load();
   }, [token]);
 
-  async function invoiceProject(row: {
+  function invoiceProject(row: {
     projectId: string;
     projectKey: string;
     accountId?: string;
     hours: number;
     rate: number;
+    workLogIds?: string[];
   }) {
-    if (!token || !canManage) return;
+    if (!canManage) return;
     let accountId = row.accountId;
     if (!accountId) {
       accountId = accounts[0]?._id;
@@ -715,21 +602,16 @@ export function BillingTimeToInvoice() {
         return;
       }
     }
-    const res = await billingApi.createFromTime(
-      {
-        accountId,
-        projectId: row.projectId,
-        hours: row.hours,
-        rate: row.rate,
-      },
-      token
-    );
-    if (res.success) {
-      setMessage(`Draft invoice created for ${row.projectKey}.`);
-      load();
-    } else {
-      setMessage((res as { message?: string }).message ?? 'Failed to create invoice');
-    }
+    const params = new URLSearchParams({
+      projectId: row.projectId,
+      accountId,
+      hours: String(row.hours),
+      rate: String(row.rate),
+    });
+    if (summary?.from) params.set('from', summary.from);
+    if (summary?.to) params.set('to', summary.to);
+    if (row.workLogIds?.length) params.set('workLogIds', row.workLogIds.join(','));
+    navigate(`/billing/invoices/new?${params.toString()}`);
   }
 
   return (

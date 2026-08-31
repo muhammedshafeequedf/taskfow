@@ -35,6 +35,7 @@ router.delete('/subscriptions/:id', requireAnyPermission(subManage), asyncHandle
 router.post('/subscriptions/:id/invoice', requireAnyPermission([...subManage, ...invManage]), asyncHandler(ctrl.generateSubscriptionInvoice));
 
 router.get('/invoices', requireAnyPermission(invList), asyncHandler(ctrl.listInvoices));
+router.get('/invoices/:id', requireAnyPermission(invList), asyncHandler(ctrl.getInvoice));
 router.post('/invoices', requireAnyPermission(invManage), asyncHandler(ctrl.createInvoice));
 router.patch('/invoices/:id', requireAnyPermission([B.INVOICE.MANAGE]), asyncHandler(ctrl.updateInvoice));
 router.post('/invoices/:id/pay', requireAnyPermission([B.INVOICE.MANAGE]), asyncHandler(ctrl.recordPayment));

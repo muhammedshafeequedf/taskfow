@@ -14,6 +14,7 @@ export type UpsertContactInput = {
   customerUserId?: string;
   employeeId?: string;
   userId?: string;
+  accountId?: string;
   isPrimary?: boolean;
 };
 
@@ -37,6 +38,7 @@ export async function upsertContactByEmail(
   if (input.origin) $set.origin = input.origin;
   if (input.customerOrgId) $set.customerOrgId = input.customerOrgId;
   if (input.customerUserId) $set.customerUserId = input.customerUserId;
+  if (input.accountId) $set.accountId = input.accountId;
   if (input.employeeId) $set.employeeId = input.employeeId;
   if (input.userId) $set.userId = input.userId;
   if (input.isPrimary) $set.isPrimary = true;
@@ -57,6 +59,7 @@ export async function upsertContactByEmail(
     origin: input.origin ?? 'crm',
     customerOrgId: input.customerOrgId || undefined,
     customerUserId: input.customerUserId || undefined,
+    accountId: input.accountId || undefined,
     employeeId: input.employeeId || undefined,
     userId: input.userId || undefined,
     isPrimary: Boolean(input.isPrimary),

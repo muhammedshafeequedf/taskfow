@@ -17,6 +17,10 @@ import {
 } from '../../../services/email.service';
 import type { CreateOrgInput, UpdateOrgInput } from './customerOrg.validation';
 import mongoose from 'mongoose';
+import { CrmLead } from '../../crm/models/crmLead.model';
+import { CrmDeal } from '../../crm/models/crmDeal.model';
+import { linkCustomerOrgToCrm, syncCrmAccountFromCustomerOrg, linkAccountToCustomerOrg } from '../../crm/crmBridge.service';
+import { CrmAccount } from '../../crm/models/crmAccount.model';
 
 const SALT_ROUNDS = 10;
 
@@ -116,18 +120,37 @@ export async function createOrg(
     )
   ).catch((err) => console.error('Failed to send org admin invite email:', err));
 
+  const orgIdStr = String(org._id);
+  let crmAccountId: string;
+  if (_opts?.existingCrmAccountId) {
+    await linkAccountToCustomerOrg(_opts.existingCrmAccountId, orgIdStr, taskflowOrganizationId);
+    crmAccountId = _opts.existingCrmAccountId;
+  } else {
+    crmAccountId = await syncCrmAccountFromCustomerOrg(orgIdStr, taskflowOrganizationId, createdBy);
+  }
+
   await upsertContactByEmail(taskflowOrganizationId, {
     email: input.adminEmail,
     name: input.adminName,
     phone: input.contactPhone,
     origin: 'portal',
-    customerOrgId: String(org._id),
+    customerOrgId: orgIdStr,
     customerUserId: String(adminUser._id),
+    accountId: crmAccountId,
     isPrimary: true,
   }).catch((err) => console.error('Failed to upsert contact from org admin:', err));
 
+  if (input.leadId || input.dealId) {
+    await linkCustomerOrgToCrm(orgIdStr, taskflowOrganizationId, {
+      leadId: input.leadId,
+      dealId: input.dealId,
+      userId: createdBy,
+    });
+  }
+
   return {
-    org: org.toObject(),
+    org: { ...org.toObject(), crmAccountId },
+    crmAccountId,
     adminRole: adminRole.toObject(),
     memberRole: memberRole.toObject(),
     adminUser: {
@@ -176,10 +199,22 @@ export async function listOrgs(
 }
 
 export async function getOrg(id: string, taskflowOrganizationId: string): Promise<unknown> {
-  const org = await CustomerOrg.findOne({
+  let org = await CustomerOrg.findOne({
     _id: id,
     taskflowOrganizationId: new mongoose.Types.ObjectId(taskflowOrganizationId),
   }).lean();
+  if (!org) throw new ApiError(404, 'Organisation not found');
+
+  if (!org.crmAccountId) {
+    try {
+      await syncCrmAccountFromCustomerOrg(id, taskflowOrganizationId);
+      org = await CustomerOrg.findById(id).lean();
+      if (!org) throw new ApiError(404, 'Organisation not found');
+    } catch (err) {
+      console.error('Failed to sync CRM account for customer org:', err);
+    }
+  }
+
   if (!org) throw new ApiError(404, 'Organisation not found');
 
   const memberCount = await CustomerUser.countDocuments({
@@ -187,7 +222,23 @@ export async function getOrg(id: string, taskflowOrganizationId: string): Promis
     status: { $ne: 'inactive' },
   });
 
-  return { ...org, memberCount };
+  const orgOid = new mongoose.Types.ObjectId(taskflowOrganizationId);
+  const [linkedLead, linkedDeals, linkedAccount] = await Promise.all([
+    CrmLead.findOne({ customerOrgId: id, taskflowOrganizationId: orgOid })
+      .select('_id title status')
+      .lean(),
+    CrmDeal.find({ customerOrgId: id, taskflowOrganizationId: orgOid })
+      .select('_id title status value currency')
+      .sort({ updatedAt: -1 })
+      .lean(),
+    org.crmAccountId
+      ? CrmAccount.findOne({ _id: org.crmAccountId, taskflowOrganizationId: orgOid })
+          .select('_id name type')
+          .lean()
+      : Promise.resolve(null),
+  ]);
+
+  return { ...org, memberCount, linkedLead, linkedDeals, linkedAccount };
 }
 
 export async function updateOrg(id: string, input: UpdateOrgInput, taskflowOrganizationId: string): Promise<unknown> {

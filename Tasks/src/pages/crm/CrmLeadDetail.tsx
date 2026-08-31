@@ -56,6 +56,9 @@ export default function CrmLeadDetail() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
+  const [convertStep, setConvertStep] = useState(1);
+  const [convertError, setConvertError] = useState('');
+  const [portalSkipAck, setPortalSkipAck] = useState(false);
   const [convert, setConvert] = useState({
     pipelineId: '',
     dealValue: '',
@@ -123,6 +126,46 @@ export default function CrmLeadDetail() {
     load();
   }
 
+  function openConvertWizard() {
+    setConvertStep(1);
+    setConvertError('');
+    setPortalSkipAck(false);
+    setConvertOpen(true);
+  }
+
+  function closeConvertWizard() {
+    setConvertOpen(false);
+    setConvertStep(1);
+    setConvertError('');
+    setPortalSkipAck(false);
+  }
+
+  function nextConvertStep() {
+    const existingOrgId = refOrgId(lead?.customerOrgId);
+    setConvertError('');
+    if (convertStep === 1) {
+      setConvertStep(existingOrgId ? 3 : 2);
+      return;
+    }
+    if (convertStep === 2) {
+      if (convert.createPortalOrg) {
+        const email = (convert.adminEmail || convert.contactEmail).trim();
+        if (!email) {
+          setConvertError('Customer email is required to create a portal organisation');
+          return;
+        }
+        if (!convert.orgName.trim()) {
+          setConvertError('Organisation name is required');
+          return;
+        }
+      } else if (!portalSkipAck) {
+        setConvertError('Confirm that the customer will not receive portal access yet');
+        return;
+      }
+      setConvertStep(3);
+    }
+  }
+
   async function doConvert(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !id || !canUpdate) return;
@@ -130,12 +173,13 @@ export default function CrmLeadDetail() {
     if (convert.createPortalOrg && !existingOrgId) {
       const email = (convert.adminEmail || convert.contactEmail).trim();
       if (!email) {
-        setError('Customer email is required to create a portal organisation');
+        setConvertError('Customer email is required to create a portal organisation');
+        setConvertStep(2);
         return;
       }
     }
     setBusy(true);
-    setError('');
+    setConvertError('');
     const res = await crmApi.convertLead(
       id,
       {
@@ -161,15 +205,15 @@ export default function CrmLeadDetail() {
     );
     setBusy(false);
     if (!res.success) {
-      setError((res as { message?: string }).message ?? 'Convert failed');
+      setConvertError((res as { message?: string }).message ?? 'Convert failed');
       return;
     }
-    const data = res.data as {
-      deal?: { _id: string };
-      customerOrg?: { _id: string };
-      handoff?: { projectId?: string; customerOrgId?: string };
-    };
-    setConvertOpen(false);
+    const data = res.data;
+    const handoff = data?.handoff;
+    if (handoff?.warnings?.length) {
+      setMsg(handoff.warnings.join(' '));
+    }
+    closeConvertWizard();
     if (data?.handoff?.projectId) navigate(`/projects/${data.handoff.projectId}/dashboard`);
     else if (data?.customerOrg?._id || data?.handoff?.customerOrgId)
       navigate(`/admin/customer-orgs/${data.customerOrg?._id || data.handoff?.customerOrgId}`);
@@ -261,7 +305,7 @@ export default function CrmLeadDetail() {
               <button type="button" disabled={busy} onClick={() => void setStatus('qualified')} className="px-3 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm">
                 Qualify
               </button>
-              <button type="button" disabled={busy} onClick={() => setConvertOpen(true)} className="btn-primary px-3 py-2 rounded-lg text-sm">
+              <button type="button" disabled={busy} onClick={openConvertWizard} className="btn-primary px-3 py-2 rounded-lg text-sm">
                 Convert to deal
               </button>
             </>
@@ -447,44 +491,78 @@ export default function CrmLeadDetail() {
       </div>
 
       {convertOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setConvertOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={closeConvertWizard}>
           <form
-            onSubmit={doConvert}
-            className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl max-w-lg w-full p-6 space-y-3 max-h-[90vh] overflow-y-auto"
+            onSubmit={convertStep === 3 ? doConvert : (e) => { e.preventDefault(); nextConvertStep(); }}
+            className="bg-[color:var(--bg-elevated)] border border-[color:var(--border-subtle)] rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold">Convert to deal</h2>
-            <p className="text-sm text-[color:var(--text-muted)]">
-              {refOrgId(lead.customerOrgId)
-                ? 'Creates a deal against the existing customer organisation.'
-                : 'Creates a deal and, if checked, a Customer Portal organisation (editable below).'}
-            </p>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Pipeline</span>
-              <select className={inputClass} value={convert.pipelineId} onChange={(e) => setConvert((c) => ({ ...c, pipelineId: e.target.value }))}>
-                {pipelines.map((p) => (
-                  <option key={p._id} value={p._id}>{p.name}{p.isDefault ? ' (default)' : ''}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Deal value</span>
-              <input className={inputClass} type="number" min={0} value={convert.dealValue} onChange={(e) => setConvert((c) => ({ ...c, dealValue: e.target.value }))} />
-            </label>
-            <label className="block text-xs space-y-1">
-              <span className="text-[color:var(--text-muted)]">Expected close</span>
-              <input className={inputClass} type="date" value={convert.expectedCloseDate} onChange={(e) => setConvert((c) => ({ ...c, expectedCloseDate: e.target.value }))} />
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={convert.createProject} onChange={(e) => setConvert((c) => ({ ...c, createProject: e.target.checked }))} />
-              Create project and map to this customer
-            </label>
-            {!refOrgId(lead.customerOrgId) && (
+            <div>
+              <h2 className="text-lg font-semibold">Customer onboarding</h2>
+              <p className="text-sm text-[color:var(--text-muted)] mt-1">
+                Step {refOrgId(lead.customerOrgId) ? (convertStep === 3 ? 2 : 1) : convertStep} of {refOrgId(lead.customerOrgId) ? 2 : 3}
+                {' · '}
+                {convertStep === 1 && 'Deal terms'}
+                {convertStep === 2 && 'Portal organisation'}
+                {convertStep === 3 && 'Delivery setup'}
+              </p>
+            </div>
+
+            {convertError && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{convertError}</div>
+            )}
+
+            {convertStep === 1 && (
               <>
+                <p className="text-sm text-[color:var(--text-muted)]">
+                  {refOrgId(lead.customerOrgId)
+                    ? 'Creates a deal against the existing customer organisation.'
+                    : 'Creates a deal and provisions the customer portal organisation.'}
+                </p>
+                <label className="block text-xs space-y-1">
+                  <span className="text-[color:var(--text-muted)]">Pipeline</span>
+                  <select className={inputClass} value={convert.pipelineId} onChange={(e) => setConvert((c) => ({ ...c, pipelineId: e.target.value }))}>
+                    {pipelines.map((p) => (
+                      <option key={p._id} value={p._id}>{p.name}{p.isDefault ? ' (default)' : ''}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs space-y-1">
+                  <span className="text-[color:var(--text-muted)]">Deal value</span>
+                  <input className={inputClass} type="number" min={0} value={convert.dealValue} onChange={(e) => setConvert((c) => ({ ...c, dealValue: e.target.value }))} />
+                </label>
+                <label className="block text-xs space-y-1">
+                  <span className="text-[color:var(--text-muted)]">Expected close</span>
+                  <input className={inputClass} type="date" value={convert.expectedCloseDate} onChange={(e) => setConvert((c) => ({ ...c, expectedCloseDate: e.target.value }))} />
+                </label>
+              </>
+            )}
+
+            {convertStep === 2 && !refOrgId(lead.customerOrgId) && (
+              <>
+                <p className="text-sm text-[color:var(--text-muted)]">
+                  A portal organisation gives the customer access to raise requests, view projects, and manage their team.
+                </p>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={convert.createPortalOrg} onChange={(e) => setConvert((c) => ({ ...c, createPortalOrg: e.target.checked }))} />
+                  <input
+                    type="checkbox"
+                    checked={convert.createPortalOrg}
+                    onChange={(e) => {
+                      setConvert((c) => ({ ...c, createPortalOrg: e.target.checked }));
+                      setPortalSkipAck(false);
+                    }}
+                  />
                   Create customer portal organisation
                 </label>
+                {!convert.createPortalOrg && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200/90 space-y-2">
+                    <p>The customer will not get portal access. You can create or link an organisation later from Admin.</p>
+                    <label className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={portalSkipAck} onChange={(e) => setPortalSkipAck(e.target.checked)} />
+                      I understand — continue without portal org
+                    </label>
+                  </div>
+                )}
                 {convert.createPortalOrg && (
                   <div className="grid gap-2 sm:grid-cols-2 pt-1">
                     <label className="block text-xs space-y-1 sm:col-span-2">
@@ -515,9 +593,48 @@ export default function CrmLeadDetail() {
                 )}
               </>
             )}
+
+            {convertStep === 3 && (
+              <>
+                <p className="text-sm text-[color:var(--text-muted)]">
+                  Optionally create a starter project and map it to this customer for delivery tracking.
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={convert.createProject} onChange={(e) => setConvert((c) => ({ ...c, createProject: e.target.checked }))} />
+                  Create starter project and map to customer
+                </label>
+                <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-3 py-2 text-xs text-[color:var(--text-muted)] space-y-1">
+                  <p><span className="text-[color:var(--text-primary)]">Pipeline:</span> {pipelines.find((p) => p._id === convert.pipelineId)?.name ?? 'Default'}</p>
+                  {convert.dealValue && <p><span className="text-[color:var(--text-primary)]">Deal value:</span> {convert.dealValue}</p>}
+                  {!refOrgId(lead.customerOrgId) && (
+                    <p>
+                      <span className="text-[color:var(--text-primary)]">Portal org:</span>{' '}
+                      {convert.createPortalOrg ? convert.orgName || lead.companyName || lead.title : 'Skipped'}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
             <div className="flex gap-2 pt-2">
-              <button type="submit" disabled={busy} className="btn-primary px-4 py-2 rounded-lg text-sm">Convert</button>
-              <button type="button" onClick={() => setConvertOpen(false)} className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm">Cancel</button>
+              {convertStep > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setConvertStep((s) => (s === 3 && refOrgId(lead.customerOrgId) ? 1 : s - 1))}
+                  className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm"
+                >
+                  Back
+                </button>
+              )}
+              <div className="flex-1" />
+              {convertStep < 3 ? (
+                <button type="submit" className="btn-primary px-4 py-2 rounded-lg text-sm">Next</button>
+              ) : (
+                <button type="submit" disabled={busy} className="btn-primary px-4 py-2 rounded-lg text-sm">
+                  {busy ? 'Converting…' : 'Complete onboarding'}
+                </button>
+              )}
+              <button type="button" onClick={closeConvertWizard} className="px-4 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm">Cancel</button>
             </div>
           </form>
         </div>

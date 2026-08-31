@@ -22,6 +22,11 @@ const selectClass =
 const inputClass =
   'h-8 w-full rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-page)] px-2.5 text-[13px]';
 
+function refOrgId(ref?: string | { _id: string }): string {
+  if (!ref) return '';
+  return typeof ref === 'string' ? ref : ref._id;
+}
+
 export default function CrmLeads() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
@@ -86,17 +91,41 @@ export default function CrmLeads() {
     setPage(1);
   }
 
-  async function convert(id: string) {
+  async function convert(lead: CrmLead) {
     if (!token || !canUpdate) return;
-    setMsg('');
-    const res = await crmApi.convertLead(id, undefined, token);
-    if (!res.success) {
-      setMsg((res as { message?: string }).message ?? 'Convert failed — open the lead to convert with pipeline/value.');
+    const existingOrgId = refOrgId(lead.customerOrgId);
+    if (!lead.contactEmail && !existingOrgId) {
+      setMsg('Add a customer email on the lead before converting, or open the lead to complete onboarding.');
+      navigate(`/crm/leads/${lead._id}`);
       return;
     }
-    const data = res.data as { account?: { _id: string } };
+    setMsg('');
+    const res = await crmApi.convertLead(
+      lead._id,
+      {
+        createPortalOrg: !existingOrgId,
+        createProject: true,
+        portalOrg: !existingOrgId && lead.contactEmail
+          ? {
+              name: lead.companyName || lead.title,
+              contactEmail: lead.contactEmail,
+              contactPhone: lead.contactPhone,
+              adminName: lead.contactName || lead.companyName || lead.title,
+              adminEmail: lead.contactEmail,
+            }
+          : undefined,
+      },
+      token
+    );
+    if (!res.success) {
+      setMsg((res as { message?: string }).message ?? 'Convert failed — open the lead to complete onboarding.');
+      return;
+    }
+    const data = res.data;
     load();
-    if (data?.account?._id) navigate(`/crm/accounts/${data.account._id}`);
+    if (data?.handoff?.projectId) navigate(`/projects/${data.handoff.projectId}/dashboard`);
+    else if (data?.customerOrg?._id || data?.handoff?.customerOrgId)
+      navigate(`/admin/customer-orgs/${data.customerOrg?._id || data.handoff?.customerOrgId}`);
     else navigate('/crm/deals');
   }
 
@@ -254,7 +283,17 @@ export default function CrmLeads() {
                         {canUpdate && open && (
                           <>
                             <span className="text-[color:var(--text-muted)]"> · </span>
-                            <button type="button" onClick={() => void convert(l._id)} className="text-[color:var(--accent)] hover:underline">
+                            <button
+                              type="button"
+                              title={
+                                !l.contactEmail && !refOrgId(l.customerOrgId)
+                                  ? 'Add customer email before converting'
+                                  : 'Quick convert with portal org and project'
+                              }
+                              disabled={!l.contactEmail && !refOrgId(l.customerOrgId)}
+                              onClick={() => void convert(l)}
+                              className="text-[color:var(--accent)] hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                            >
                               Convert
                             </button>
                           </>

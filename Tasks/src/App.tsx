@@ -141,6 +141,8 @@ import {
   BillingInvoices,
   BillingTax,
 } from './pages/billing/BillingSections';
+import BillingInvoiceForm from './pages/billing/BillingInvoiceForm';
+import BillingInvoiceDetail from './pages/billing/BillingInvoiceDetail';
 import CoreCompany from './pages/core/CoreCompany';
 import CoreCurrencies from './pages/core/CoreCurrencies';
 import CoreExchangeRates from './pages/core/CoreExchangeRates';
@@ -355,6 +357,9 @@ function AppRoutes() {
           <Route path="/billing/subscriptions" element={<BillingSubscriptions />} />
           <Route path="/billing/time-to-invoice" element={<BillingTimeToInvoice />} />
           <Route path="/billing/invoices" element={<BillingInvoices />} />
+          <Route path="/billing/invoices/new" element={<BillingInvoiceForm />} />
+          <Route path="/billing/invoices/:id/edit" element={<BillingInvoiceForm />} />
+          <Route path="/billing/invoices/:id" element={<BillingInvoiceDetail />} />
           <Route path="/billing/tax" element={<BillingTax />} />
         </Route>
 
