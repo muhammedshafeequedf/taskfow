@@ -96,9 +96,13 @@ export async function getQuote(id: string, workspaceId: string | null | undefine
   const orgId = requireWorkspaceId(workspaceId);
   const quote = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) })
     .populate('dealId', 'title status value currency')
-    .populate('leadId', 'title companyName status contactName contactEmail')
+    .populate(
+      'leadId',
+      'title companyName status contactName contactEmail additionalContacts'
+    )
     .populate('customerOrgId', 'name contactEmail')
     .populate('accountId', 'name type industry website')
+    .populate('contactId', 'name email')
     .populate('createdBy', 'name email')
     .lean();
   if (!quote) throw new ApiError(404, 'Quote not found');
@@ -118,15 +122,37 @@ export async function createQuote(
     throw new ApiError(400, 'Link the quotation to a deal or a lead');
   }
 
-  const deal = hasDeal
-    ? await CrmDeal.findOne({ _id: input.dealId, taskflowOrganizationId: orgOid }).lean()
-    : null;
-  if (hasDeal && !deal) throw new ApiError(404, 'Deal not found');
+  type DealLean = {
+    _id: unknown;
+    title: string;
+    accountId?: unknown;
+    customerOrgId?: unknown;
+    contactId?: unknown;
+    currency?: string;
+  };
+  type LeadLean = {
+    _id: unknown;
+    title: string;
+    accountId?: unknown;
+    customerOrgId?: unknown;
+    currency?: string;
+  };
 
-  const lead = hasLead
-    ? await CrmLead.findOne({ _id: input.leadId, taskflowOrganizationId: orgOid }).lean()
-    : null;
-  if (hasLead && !lead) throw new ApiError(404, 'Lead not found');
+  let deal: DealLean | null = null;
+  if (hasDeal) {
+    deal = (await CrmDeal.findOne({ _id: input.dealId, taskflowOrganizationId: orgOid })
+      .select('title accountId customerOrgId contactId currency')
+      .lean()) as DealLean | null;
+    if (!deal) throw new ApiError(404, 'Deal not found');
+  }
+
+  let lead: LeadLean | null = null;
+  if (hasLead) {
+    lead = (await CrmLead.findOne({ _id: input.leadId, taskflowOrganizationId: orgOid })
+      .select('title accountId customerOrgId currency')
+      .lean()) as LeadLean | null;
+    if (!lead) throw new ApiError(404, 'Lead not found');
+  }
 
   const lineItems = normalizeLines((input.lineItems as LineInput[]) ?? []);
   const discountPercent = Math.min(100, Math.max(0, Number(input.discountPercent) || 0));

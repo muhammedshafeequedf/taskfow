@@ -2232,10 +2232,20 @@ export interface CrmQuote {
   _id: string;
   title: string;
   dealId?: string | { _id: string; title?: string; status?: string; value?: number; currency?: string };
-  leadId?: string | { _id: string; title?: string; companyName?: string; status?: string; contactName?: string; contactEmail?: string };
+  leadId?:
+    | string
+    | {
+        _id: string;
+        title?: string;
+        companyName?: string;
+        status?: string;
+        contactName?: string;
+        contactEmail?: string;
+        additionalContacts?: Array<{ name?: string; email?: string; jobTitle?: string }>;
+      };
   accountId?: string | { _id: string; name?: string; type?: string; industry?: string; website?: string };
-  customerOrgId?: string | { _id: string; name?: string };
-  contactId?: string;
+  customerOrgId?: string | { _id: string; name?: string; contactEmail?: string };
+  contactId?: string | { _id: string; name?: string; email?: string };
   status: string;
   version?: number;
   subtotal: number;

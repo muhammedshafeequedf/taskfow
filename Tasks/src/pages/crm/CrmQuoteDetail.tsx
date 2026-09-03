@@ -3,13 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppDisplayName } from '../../hooks/useAppDisplayName';
 import { canAny } from '../../utils/moduleAccess';
-import { crmApi, type CrmQuote } from '../../lib/api';
+import { crmApi, type CrmContact, type CrmLead, type CrmQuote } from '../../lib/api';
 import { money } from '../../components/moduleKit';
 import { downloadQuotePdf, quotePdfBase64, quotePdfFilename } from '../../lib/quotePdf';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 
 function refId(
-  ref: CrmQuote['dealId'] | CrmQuote['leadId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId']
+  ref: CrmQuote['dealId'] | CrmQuote['leadId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId'] | CrmQuote['contactId']
 ): string | undefined {
   if (!ref) return undefined;
   if (typeof ref === 'string') return ref;
@@ -51,6 +51,57 @@ function billingLabel(type?: string): string {
   return 'Fixed';
 }
 
+type RecipientOption = { email: string; label: string; source: string };
+
+function addLeadEmails(lead: CrmLead, add: (email?: string, label?: string, source?: string) => void) {
+  add(lead.contactEmail, lead.contactName || lead.companyName || lead.title || 'Primary contact', 'Lead');
+  for (const c of lead.additionalContacts ?? []) {
+    add(c.email, c.name || c.jobTitle || lead.title || 'Additional contact', 'Lead');
+  }
+}
+
+function collectRecipientEmails(
+  quote: CrmQuote,
+  lead?: CrmLead | null,
+  contacts?: CrmContact[],
+  moreLeads?: CrmLead[]
+): RecipientOption[] {
+  const seen = new Set<string>();
+  const options: RecipientOption[] = [];
+  const add = (email?: string, label?: string, source?: string) => {
+    const e = email?.trim().toLowerCase();
+    if (!e || !e.includes('@') || seen.has(e)) return;
+    seen.add(e);
+    options.push({
+      email: e,
+      label: label?.trim() || e,
+      source: source || 'Contact',
+    });
+  };
+
+  const leadObj =
+    lead ||
+    (quote.leadId && typeof quote.leadId === 'object' ? (quote.leadId as CrmLead) : null);
+  if (leadObj) addLeadEmails(leadObj, add);
+
+  const contact = quote.contactId && typeof quote.contactId === 'object' ? quote.contactId : null;
+  if (contact) add(contact.email, contact.name || 'CRM contact', 'Contact');
+
+  const org = quote.customerOrgId && typeof quote.customerOrgId === 'object' ? quote.customerOrgId : null;
+  if (org?.contactEmail) add(org.contactEmail, org.name || 'Customer org', 'Customer');
+
+  for (const c of contacts ?? []) {
+    add(c.email, c.name || 'Account contact', 'Contact');
+  }
+
+  for (const l of moreLeads ?? []) {
+    if (leadObj && l._id === leadObj._id) continue;
+    addLeadEmails(l, add);
+  }
+
+  return options;
+}
+
 export default function CrmQuoteDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -70,6 +121,9 @@ export default function CrmQuoteDetail() {
   const [attachPdf, setAttachPdf] = useState(true);
   const [sendBusy, setSendBusy] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [useCustomEmail, setUseCustomEmail] = useState(false);
+  const [recipientOptions, setRecipientOptions] = useState<RecipientOption[]>([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
 
   const load = () => {
     if (!token || !id) return;
@@ -95,6 +149,90 @@ export default function CrmQuoteDetail() {
   );
 
   const displayTotal = quote?.total ?? quote?.subtotal ?? 0;
+
+  async function openSendDialog() {
+    if (!quote || !token) return;
+    setSendError('');
+    setSendOpen(true);
+    setRecipientsLoading(true);
+    setRecipientOptions([]);
+    setUseCustomEmail(false);
+    setSendEmail('');
+
+    let lead: CrmLead | null = null;
+    let contacts: CrmContact[] = [];
+    let moreLeads: CrmLead[] = [];
+    const leadId = refId(quote.leadId);
+    const dealId = refId(quote.dealId);
+    let accountId = refId(quote.accountId);
+    const customerOrgId = refId(quote.customerOrgId);
+
+    try {
+      const [leadRes, dealsRes, leadsRes] = await Promise.all([
+        leadId ? crmApi.getLead(leadId, token) : Promise.resolve(null),
+        crmApi.listDeals(token).catch(() => null),
+        crmApi.listLeads(token, { limit: 100 }).catch(() => null),
+      ]);
+
+      if (leadRes?.success && leadRes.data) lead = leadRes.data as CrmLead;
+
+      if (dealsRes?.success && dealsRes.data) {
+        const deals = dealsRes.data as Array<{
+          _id: string;
+          leadId?: string | { _id: string };
+          accountId?: string | { _id: string };
+          contactId?: string | { _id: string; name?: string; email?: string };
+        }>;
+        const deal = dealId ? deals.find((d) => d._id === dealId) : undefined;
+        if (deal) {
+          if (!accountId) accountId = refId(deal.accountId as CrmQuote['accountId']);
+          const dealLeadId = refId(deal.leadId as CrmQuote['leadId']);
+          if (!lead && dealLeadId) {
+            const dl = await crmApi.getLead(dealLeadId, token);
+            if (dl.success && dl.data) lead = dl.data as CrmLead;
+          }
+          if (deal.contactId && typeof deal.contactId === 'object' && deal.contactId.email) {
+            contacts.push({
+              _id: deal.contactId._id,
+              name: deal.contactId.name || 'Deal contact',
+              email: deal.contactId.email,
+            } as CrmContact);
+          }
+        }
+      }
+
+      if (accountId || customerOrgId) {
+        const cRes = await crmApi.listContacts(token, {
+          ...(accountId ? { accountId } : {}),
+          ...(customerOrgId ? { customerOrgId } : {}),
+        });
+        if (cRes.success && cRes.data) {
+          contacts = [...contacts, ...(cRes.data as CrmContact[])];
+        }
+      }
+
+      if (leadsRes?.success && leadsRes.data) {
+        const raw = leadsRes.data as CrmLead[] | { data: CrmLead[] };
+        moreLeads = Array.isArray(raw) ? raw : raw.data ?? [];
+        if (!lead && leadId) {
+          lead = moreLeads.find((l) => l._id === leadId) ?? lead;
+        }
+      }
+    } catch {
+      /* keep whatever we can collect */
+    }
+
+    const options = collectRecipientEmails(quote, lead, contacts, moreLeads);
+
+    setRecipientOptions(options);
+    setRecipientsLoading(false);
+    if (options.length > 0) {
+      setSendEmail(options[0].email);
+      setUseCustomEmail(false);
+    } else {
+      setUseCustomEmail(true);
+    }
+  }
 
   async function handleDownloadPdf() {
     if (!quote) return;
@@ -232,10 +370,7 @@ export default function CrmQuoteDetail() {
           {canUpdate && (
             <button
               type="button"
-              onClick={() => {
-                setSendOpen(true);
-                setSendError('');
-              }}
+              onClick={openSendDialog}
               className="btn-primary px-3 py-2 rounded-lg text-sm"
             >
               Send via email
@@ -451,23 +586,94 @@ export default function CrmQuoteDetail() {
           >
             <h2 className="text-lg font-semibold">Send quotation</h2>
             <p className="text-sm text-[color:var(--text-muted)]">
-              Emails the quotation summary{attachPdf ? ' with a PDF attachment' : ''}.            </p>
+              Emails the quotation summary{attachPdf ? ' with a PDF attachment' : ''}.
+            </p>
             {sendError && (
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
                 {sendError}
               </div>
             )}
-            <label className="block text-sm space-y-1.5">
-              <span className="font-medium">Recipient email</span>
-              <input
-                type="email"
-                required
-                value={sendEmail}
-                onChange={(e) => setSendEmail(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
-                placeholder="client@company.com"
-              />
-            </label>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Recipient</span>
+              {recipientsLoading ? (
+                <p className="text-[13px] text-[color:var(--text-muted)]">Loading contacts from lead…</p>
+              ) : (
+                <>
+                  <select
+                    className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+                    value={useCustomEmail ? '__custom__' : sendEmail}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === '__custom__') {
+                        setUseCustomEmail(true);
+                        setSendEmail('');
+                      } else {
+                        setUseCustomEmail(false);
+                        setSendEmail(v);
+                      }
+                    }}
+                  >
+                    {recipientOptions.length === 0 && (
+                      <option value="__custom__">No lead emails found — type below</option>
+                    )}
+                    {recipientOptions.map((opt) => (
+                      <option key={opt.email} value={opt.email}>
+                        {opt.label} — {opt.email} ({opt.source})
+                      </option>
+                    ))}
+                    <option value="__custom__">Other email…</option>
+                  </select>
+
+                  {recipientOptions.length > 0 && !useCustomEmail && (
+                    <div className="space-y-1 max-h-40 overflow-y-auto rounded-lg border border-[color:var(--border-subtle)] p-1.5 bg-[color:var(--bg-page)]">
+                      {recipientOptions.map((opt) => {
+                        const selected = sendEmail === opt.email;
+                        return (
+                          <button
+                            key={opt.email}
+                            type="button"
+                            onClick={() => {
+                              setUseCustomEmail(false);
+                              setSendEmail(opt.email);
+                            }}
+                            className={`w-full text-left rounded-lg px-2.5 py-2 text-sm ${
+                              selected
+                                ? 'bg-[color:var(--accent)]/15 ring-1 ring-[color:var(--accent)]/40'
+                                : 'hover:bg-[color:var(--bg-elevated)]'
+                            }`}
+                          >
+                            <span className="block font-medium truncate">{opt.label}</span>
+                            <span className="block text-[12px] text-[color:var(--text-muted)] truncate">
+                              {opt.email}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {useCustomEmail && (
+                    <input
+                      type="email"
+                      required
+                      value={sendEmail}
+                      onChange={(e) => setSendEmail(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-[color:var(--bg-page)] border border-[color:var(--border-subtle)] text-sm focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+                      placeholder="client@company.com"
+                      autoFocus
+                    />
+                  )}
+
+                  {!recipientsLoading && recipientOptions.length === 0 && (
+                    <p className="text-[12px] text-amber-400">
+                      No emails on the linked lead/account. Add a contact email on the lead, or type
+                      one above.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
             <label className="block text-sm space-y-1.5">
               <span className="font-medium">Message (optional)</span>
               <textarea
