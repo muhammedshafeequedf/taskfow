@@ -1,5 +1,6 @@
 import { CrmQuote, type CrmQuoteBillingType, type ICrmQuoteLine } from '../models/crmQuote.model';
 import { CrmDeal } from '../models/crmDeal.model';
+import { CrmLead } from '../models/crmLead.model';
 import { CrmContract } from '../models/crmContract.model';
 import { BillingInvoice } from '../../billing/models/billingInvoice.model';
 import { sendCustomerEmail } from '../../../services/email.service';
@@ -74,16 +75,19 @@ function billingLabel(type: CrmQuoteBillingType): string {
 
 export async function listQuotes(
   workspaceId: string | null | undefined,
-  opts?: { dealId?: string; accountId?: string; customerOrgId?: string }
+  opts?: { dealId?: string; leadId?: string; accountId?: string; customerOrgId?: string }
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const filter: Record<string, unknown> = { taskflowOrganizationId: toOrgOid(orgId) };
   if (opts?.dealId) filter.dealId = opts.dealId;
+  if (opts?.leadId) filter.leadId = opts.leadId;
   if (opts?.customerOrgId) filter.customerOrgId = opts.customerOrgId;
   else if (opts?.accountId) filter.accountId = opts.accountId;
   return CrmQuote.find(filter)
     .populate('customerOrgId', 'name')
     .populate('accountId', 'name type')
+    .populate('dealId', 'title status')
+    .populate('leadId', 'title companyName status')
     .sort({ createdAt: -1 })
     .lean();
 }
@@ -92,6 +96,7 @@ export async function getQuote(id: string, workspaceId: string | null | undefine
   const orgId = requireWorkspaceId(workspaceId);
   const quote = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) })
     .populate('dealId', 'title status value currency')
+    .populate('leadId', 'title companyName status contactName contactEmail')
     .populate('customerOrgId', 'name contactEmail')
     .populate('accountId', 'name type industry website')
     .populate('createdBy', 'name email')
@@ -106,25 +111,46 @@ export async function createQuote(
   userId: string
 ) {
   const orgId = requireWorkspaceId(workspaceId);
-  const deal = await CrmDeal.findOne({ _id: input.dealId, taskflowOrganizationId: toOrgOid(orgId) });
-  if (!deal) throw new ApiError(404, 'Deal not found');
+  const orgOid = toOrgOid(orgId);
+  const hasDeal = Boolean(input.dealId);
+  const hasLead = Boolean(input.leadId);
+  if (!hasDeal && !hasLead) {
+    throw new ApiError(400, 'Link the quotation to a deal or a lead');
+  }
+
+  const deal = hasDeal
+    ? await CrmDeal.findOne({ _id: input.dealId, taskflowOrganizationId: orgOid }).lean()
+    : null;
+  if (hasDeal && !deal) throw new ApiError(404, 'Deal not found');
+
+  const lead = hasLead
+    ? await CrmLead.findOne({ _id: input.leadId, taskflowOrganizationId: orgOid }).lean()
+    : null;
+  if (hasLead && !lead) throw new ApiError(404, 'Lead not found');
+
   const lineItems = normalizeLines((input.lineItems as LineInput[]) ?? []);
   const discountPercent = Math.min(100, Math.max(0, Number(input.discountPercent) || 0));
   const totals = calcTotals(lineItems, discountPercent);
+  const defaultTitle = deal
+    ? `Quote for ${deal.title}`
+    : lead
+      ? `Quote for ${lead.title}`
+      : 'Quotation';
   const doc = await CrmQuote.create({
-    taskflowOrganizationId: toOrgOid(orgId),
-    dealId: deal._id,
-    accountId: deal.accountId,
-    customerOrgId: deal.customerOrgId,
-    contactId: deal.contactId || input.contactId || undefined,
-    title: String(input.title ?? `Quote for ${deal.title}`).trim(),
+    taskflowOrganizationId: orgOid,
+    dealId: deal?._id,
+    leadId: lead?._id,
+    accountId: deal?.accountId || lead?.accountId || input.accountId || undefined,
+    customerOrgId: deal?.customerOrgId || lead?.customerOrgId || input.customerOrgId || undefined,
+    contactId: deal?.contactId || input.contactId || undefined,
+    title: String(input.title ?? defaultTitle).trim(),
     status: 'draft',
     version: 1,
     validUntil: input.validUntil ? new Date(String(input.validUntil)) : undefined,
     lineItems,
     ...totals,
     discountPercent,
-    currency: input.currency ?? deal.currency ?? 'USD',
+    currency: input.currency ?? deal?.currency ?? lead?.currency ?? 'USD',
     taxCode: input.taxCode ? String(input.taxCode) : undefined,
     notes: input.notes,
     createdBy: userId,
@@ -271,6 +297,7 @@ async function convertAcceptedQuote(
     accountId?: unknown;
     customerOrgId?: unknown;
     dealId?: unknown;
+    leadId?: unknown;
     currency?: string;
     subtotal?: number;
     taxTotal?: number;
@@ -360,6 +387,7 @@ async function convertAcceptedQuote(
       userId: String(quote.createdBy ?? ''),
       customerOrgId: quote.customerOrgId ? String(quote.customerOrgId) : undefined,
       dealId: quote.dealId ? String(quote.dealId) : undefined,
+      leadId: quote.leadId ? String(quote.leadId) : undefined,
       quoteId: String(quote._id),
       contractId: result.contractId,
       projectTitle: quote.title,

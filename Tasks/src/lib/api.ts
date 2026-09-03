@@ -2231,7 +2231,8 @@ export interface CrmQuoteLine {
 export interface CrmQuote {
   _id: string;
   title: string;
-  dealId: string | { _id: string; title?: string; status?: string; value?: number; currency?: string };
+  dealId?: string | { _id: string; title?: string; status?: string; value?: number; currency?: string };
+  leadId?: string | { _id: string; title?: string; companyName?: string; status?: string; contactName?: string; contactEmail?: string };
   accountId?: string | { _id: string; name?: string; type?: string; industry?: string; website?: string };
   customerOrgId?: string | { _id: string; name?: string };
   contactId?: string;
@@ -2505,7 +2506,9 @@ export const crmApi = {
   getQuote: (id: string, token: string) => api.get<CrmQuote>(`/crm/quotes/${id}`, token),
   createQuote: (
     data: {
-      dealId: string;
+      dealId?: string;
+      leadId?: string;
+      accountId?: string;
       title?: string;
       lineItems?: unknown[];
       currency?: string;

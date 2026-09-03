@@ -48,6 +48,7 @@ export default function CrmLeadDetail() {
   const canUpdate = canAny(user, 'taskflow.crm.lead.update');
   const canDelete = canAny(user, 'taskflow.crm.lead.delete');
   const canActivity = canAny(user, 'taskflow.crm.activity.create');
+  const canQuote = canAny(user, 'taskflow.crm.quote.create');
 
   const [lead, setLead] = useState<CrmLead | null>(null);
   const [activities, setActivities] = useState<CrmActivity[]>([]);
@@ -309,6 +310,14 @@ export default function CrmLeadDetail() {
                 Convert to deal
               </button>
             </>
+          )}
+          {canQuote && (
+            <Link
+              to={`/crm/quotes/new?leadId=${lead._id}`}
+              className="px-3 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm"
+            >
+              Create quotation
+            </Link>
           )}
           {canUpdate && !['converted', 'unqualified'].includes(lead.status) && (
             <Link to={`/crm/leads/${lead._id}/edit`} className="px-3 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm">

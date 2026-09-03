@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
 import { CurrencyAutocomplete } from '../../components/CurrencyAutocomplete';
@@ -10,6 +10,7 @@ import {
   type BillingTaxRule,
   type CoreCurrency,
   type CrmDeal,
+  type CrmLead,
   type CrmQuote,
   type CrmQuoteBillingType,
 } from '../../lib/api';
@@ -100,18 +101,24 @@ export default function CrmQuoteForm() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === 'new';
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { token, user } = useAuth();
   const canCreate = canAny(user, 'taskflow.crm.quote.create');
   const canUpdate = canAny(user, 'taskflow.crm.quote.update');
 
   const [deals, setDeals] = useState<CrmDeal[]>([]);
+  const [leads, setLeads] = useState<CrmLead[]>([]);
   const [taxRules, setTaxRules] = useState<BillingTaxRule[]>([]);
   const [currencies, setCurrencies] = useState<CoreCurrency[]>(FALLBACK_CURRENCIES);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [linkType, setLinkType] = useState<'deal' | 'lead'>(
+    searchParams.get('leadId') ? 'lead' : 'deal'
+  );
   const [form, setForm] = useState({
-    dealId: '',
+    dealId: searchParams.get('dealId') ?? '',
+    leadId: searchParams.get('leadId') ?? '',
     title: '',
     currency: 'USD',
     notes: '',
@@ -148,13 +155,20 @@ export default function CrmQuoteForm() {
 
     Promise.all([
       crmApi.listDeals(token),
+      crmApi.listLeads(token, { limit: 200 }).catch(() => ({ success: false as const })),
       billingApi.listTax(token).catch(() => ({ success: false as const })),
       coreApi.listCurrencies(token, true).catch(() => ({ success: false as const })),
       coreApi.getCompany(token).catch(() => ({ success: false as const })),
-    ]).then(([dealsRes, taxRes, currRes, companyRes]) => {
+    ]).then(([dealsRes, leadsRes, taxRes, currRes, companyRes]) => {
       if (cancelled) return;
       const dealList = dealsRes.success && dealsRes.data ? (dealsRes.data as CrmDeal[]) : [];
       setDeals(dealList);
+      let leadList: CrmLead[] = [];
+      if (leadsRes.success && leadsRes.data) {
+        const raw = leadsRes.data as CrmLead[] | { data: CrmLead[] };
+        leadList = Array.isArray(raw) ? raw : raw.data ?? [];
+      }
+      setLeads(leadList);
 
       let defTax = 0;
       let defCode = '';
@@ -177,10 +191,21 @@ export default function CrmQuoteForm() {
           : '';
 
       if (isNew) {
+        const prefLead = searchParams.get('leadId');
+        const prefDeal = searchParams.get('dealId');
+        const useLead = Boolean(prefLead) || (!prefDeal && dealList.length === 0 && leadList.length > 0);
+        setLinkType(useLead ? 'lead' : 'deal');
         setForm((f) => ({
           ...f,
-          dealId: dealList[0]?._id ?? '',
-          currency: companyCurrency || f.currency || 'USD',
+          dealId: prefDeal || (!useLead ? dealList[0]?._id ?? '' : ''),
+          leadId: prefLead || (useLead ? leadList[0]?._id ?? '' : ''),
+          currency:
+            (useLead
+              ? leadList.find((l) => l._id === (prefLead || leadList[0]?._id))?.currency
+              : dealList.find((d) => d._id === (prefDeal || dealList[0]?._id))?.currency) ||
+            companyCurrency ||
+            f.currency ||
+            'USD',
           defaultTaxRate: defTax || f.defaultTaxRate,
           taxCode: defCode || f.taxCode,
           lines: f.lines.map((l) => ({
@@ -207,8 +232,11 @@ export default function CrmQuoteForm() {
           return;
         }
         const dealId = typeof q.dealId === 'string' ? q.dealId : q.dealId?._id ?? '';
+        const leadId = typeof q.leadId === 'string' ? q.leadId : q.leadId?._id ?? '';
+        setLinkType(leadId && !dealId ? 'lead' : 'deal');
         setForm({
           dealId,
+          leadId,
           title: q.title ?? '',
           currency: q.currency || 'USD',
           notes: q.notes ?? '',
@@ -284,7 +312,15 @@ export default function CrmQuoteForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !form.dealId) return;
+    if (!token) return;
+    if (linkType === 'deal' && !form.dealId) {
+      setError('Select a deal for this quotation');
+      return;
+    }
+    if (linkType === 'lead' && !form.leadId) {
+      setError('Select a lead for this quotation');
+      return;
+    }
     const lineItems = form.lines
       .filter((l) => l.description.trim())
       .map((l) => ({
@@ -303,7 +339,8 @@ export default function CrmQuoteForm() {
     setSaving(true);
     setError('');
     const payload = {
-      dealId: form.dealId,
+      dealId: linkType === 'deal' ? form.dealId || undefined : undefined,
+      leadId: linkType === 'lead' ? form.leadId || undefined : undefined,
       title: form.title.trim() || undefined,
       currency: form.currency,
       notes: form.notes.trim() || undefined,
@@ -342,7 +379,7 @@ export default function CrmQuoteForm() {
     );
   }
 
-  if (error && !isNew && form.dealId === '' && !loading) {
+  if (error && !isNew && form.dealId === '' && form.leadId === '' && !loading) {
     return (
       <div className="p-8 space-y-3">
         <p className="text-sm text-red-400">{error}</p>
@@ -402,13 +439,17 @@ export default function CrmQuoteForm() {
       </header>
 
       <div className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-        {deals.length === 0 && (
+        {deals.length === 0 && leads.length === 0 && (
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
             Create a{' '}
+            <Link to="/crm/leads" className="underline hover:text-amber-200">
+              lead
+            </Link>{' '}
+            or{' '}
             <Link to="/crm/deals" className="underline hover:text-amber-200">
               deal
             </Link>{' '}
-            first — quotations must be linked to a CRM deal.
+            first — quotations must be linked to one of them.
           </div>
         )}
 
@@ -430,27 +471,77 @@ export default function CrmQuoteForm() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <label className="block sm:col-span-2 lg:col-span-2">
-                  <span className={labelClass}>Deal</span>
-                  <select
-                    required
-                    value={form.dealId}
-                    onChange={(e) => {
-                      setForm((f) => ({
-                        ...f,
-                        dealId: e.target.value,
-                      }));
-                    }}
-                    className={inputClass}
-                  >
-                    <option value="">Select deal…</option>
-                    {deals.map((d) => (
-                      <option key={d._id} value={d._id}>
-                        {d.title}
-                        {d.currency ? ` (${d.currency})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <span className={labelClass}>Link to</span>
+                  <div className="mt-1 flex rounded-lg border border-[color:var(--border-subtle)] overflow-hidden">
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-2 text-sm ${linkType === 'deal' ? 'bg-[color:var(--accent)] text-white' : 'bg-[color:var(--bg-page)]'}`}
+                      onClick={() => setLinkType('deal')}
+                    >
+                      Deal
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-2 text-sm ${linkType === 'lead' ? 'bg-[color:var(--accent)] text-white' : 'bg-[color:var(--bg-page)]'}`}
+                      onClick={() => setLinkType('lead')}
+                    >
+                      Lead
+                    </button>
+                  </div>
                 </label>
+                {linkType === 'deal' ? (
+                  <label className="block sm:col-span-2 lg:col-span-2">
+                    <span className={labelClass}>Deal</span>
+                    <select
+                      required
+                      value={form.dealId}
+                      onChange={(e) => {
+                        const deal = deals.find((d) => d._id === e.target.value);
+                        setForm((f) => ({
+                          ...f,
+                          dealId: e.target.value,
+                          currency: deal?.currency || f.currency,
+                        }));
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Select deal…</option>
+                      {deals.map((d) => (
+                        <option key={d._id} value={d._id}>
+                          {d.title}
+                          {d.currency ? ` (${d.currency})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label className="block sm:col-span-2 lg:col-span-2">
+                    <span className={labelClass}>Lead</span>
+                    <select
+                      required
+                      value={form.leadId}
+                      onChange={(e) => {
+                        const lead = leads.find((l) => l._id === e.target.value);
+                        setForm((f) => ({
+                          ...f,
+                          leadId: e.target.value,
+                          currency: lead?.currency || f.currency,
+                          title: f.title || (lead ? `Quote — ${lead.title}` : f.title),
+                        }));
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Select lead…</option>
+                      {leads.map((l) => (
+                        <option key={l._id} value={l._id}>
+                          {l.title}
+                          {l.companyName ? ` — ${l.companyName}` : ''}
+                          {l.status ? ` (${l.status})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="block sm:col-span-2 lg:col-span-2">
                   <span className={labelClass}>Title</span>
                   <input

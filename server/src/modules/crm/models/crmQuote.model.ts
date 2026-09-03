@@ -21,7 +21,9 @@ export interface ICrmQuoteLine {
 
 export interface ICrmQuote extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
-  dealId: mongoose.Types.ObjectId;
+  /** Optional — quotes may be linked to a deal and/or a lead */
+  dealId?: mongoose.Types.ObjectId;
+  leadId?: mongoose.Types.ObjectId;
   accountId?: mongoose.Types.ObjectId;
   customerOrgId?: mongoose.Types.ObjectId;
   contactId?: mongoose.Types.ObjectId;
@@ -66,7 +68,8 @@ const quoteLineSchema = new Schema(
 const crmQuoteSchema = new Schema<ICrmQuote>(
   {
     taskflowOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
-    dealId: { type: Schema.Types.ObjectId, ref: 'CrmDeal', required: true, index: true },
+    dealId: { type: Schema.Types.ObjectId, ref: 'CrmDeal', index: true },
+    leadId: { type: Schema.Types.ObjectId, ref: 'CrmLead', index: true },
     accountId: { type: Schema.Types.ObjectId, ref: 'CrmAccount' },
     customerOrgId: { type: Schema.Types.ObjectId, ref: 'CustomerOrg', index: true },
     contactId: { type: Schema.Types.ObjectId, ref: 'CrmContact' },

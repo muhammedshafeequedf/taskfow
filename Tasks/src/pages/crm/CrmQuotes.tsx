@@ -72,6 +72,17 @@ function dealTitle(q: CrmQuote, dealsById: Map<string, CrmDeal>): string {
   return dealsById.get(id)?.title ?? '—';
 }
 
+function linkedToLabel(q: CrmQuote, dealsById: Map<string, CrmDeal>): string {
+  const deal = dealTitle(q, dealsById);
+  if (deal !== '—') return deal;
+  if (q.leadId && typeof q.leadId === 'object') {
+    const title = q.leadId.title || 'Lead';
+    return q.leadId.companyName ? `${title} (lead)` : `${title} (lead)`;
+  }
+  if (typeof q.leadId === 'string' && q.leadId) return 'Lead';
+  return '—';
+}
+
 function accountName(
   q: CrmQuote,
   accountsById: Map<string, CrmAccount>,
@@ -582,7 +593,7 @@ export default function CrmQuotes() {
             <thead>
               <tr className="bg-[color:var(--bg-page)]/50 text-left text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
                 <th className="px-3 py-2.5 font-semibold">Title</th>
-                <th className="px-3 py-2.5 font-semibold">Deal</th>
+                <th className="px-3 py-2.5 font-semibold">Deal / Lead</th>
                 <th className="px-3 py-2.5 font-semibold">Customer</th>
                 <th className="px-3 py-2.5 font-semibold">Status</th>
                 <th className="px-3 py-2.5 font-semibold text-right">Total</th>
@@ -611,7 +622,7 @@ export default function CrmQuotes() {
                       <span className="text-[11px] text-[color:var(--text-muted)]">{q.currency}</span>
                     </td>
                     <td className="px-3 py-2.5 align-middle text-[color:var(--text-muted)] truncate max-w-[12rem]">
-                      {dealTitle(q, dealsById)}
+                      {linkedToLabel(q, dealsById)}
                     </td>
                     <td className="px-3 py-2.5 align-middle text-[color:var(--text-muted)] truncate max-w-[12rem]">
                       {accountName(q, accountsById, dealsById)}

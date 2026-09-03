@@ -8,19 +8,26 @@ import { money } from '../../components/moduleKit';
 import { downloadQuotePdf, quotePdfBase64, quotePdfFilename } from '../../lib/quotePdf';
 import { formatDateDDMMYYYY } from '../../lib/dateFormat';
 
-function refId(ref: CrmQuote['dealId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId']): string | undefined {
+function refId(
+  ref: CrmQuote['dealId'] | CrmQuote['leadId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId']
+): string | undefined {
   if (!ref) return undefined;
   if (typeof ref === 'string') return ref;
   return ref._id;
 }
 
 function refLabel(
-  ref: CrmQuote['dealId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId'],
-  kind: 'deal' | 'account' | 'customer'
+  ref: CrmQuote['dealId'] | CrmQuote['leadId'] | CrmQuote['accountId'] | CrmQuote['customerOrgId'],
+  kind: 'deal' | 'lead' | 'account' | 'customer'
 ): string {
   if (!ref) return '—';
   if (typeof ref === 'string') return ref;
   if (kind === 'account' || kind === 'customer') return ('name' in ref && ref.name) || '—';
+  if (kind === 'lead') {
+    const title = ('title' in ref && ref.title) || '—';
+    const company = 'companyName' in ref && ref.companyName ? ` — ${ref.companyName}` : '';
+    return `${title}${company}`;
+  }
   return ('title' in ref && ref.title) || '—';
 }
 
@@ -181,6 +188,7 @@ export default function CrmQuoteDetail() {
 
   const customerId = refId(quote.customerOrgId);
   const dealId = refId(quote.dealId);
+  const leadId = refId(quote.leadId);
 
   return (
     <div className="p-6 lg:p-8 w-full space-y-6">
@@ -349,7 +357,19 @@ export default function CrmQuoteDetail() {
                       {refLabel(quote.dealId, 'deal')}
                     </Link>
                   ) : (
-                    refLabel(quote.dealId, 'deal')
+                    '—'
+                  )}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-[color:var(--text-muted)]">Lead</dt>
+                <dd className="text-right text-[color:var(--text-primary)]">
+                  {leadId ? (
+                    <Link to={`/crm/leads/${leadId}`} className="text-[color:var(--accent)] hover:underline">
+                      {refLabel(quote.leadId, 'lead')}
+                    </Link>
+                  ) : (
+                    '—'
                   )}
                 </dd>
               </div>
