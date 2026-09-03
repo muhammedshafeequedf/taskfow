@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAny } from '../../utils/moduleAccess';
@@ -234,6 +234,17 @@ export default function CrmQuoteForm() {
         const dealId = typeof q.dealId === 'string' ? q.dealId : q.dealId?._id ?? '';
         const leadId = typeof q.leadId === 'string' ? q.leadId : q.leadId?._id ?? '';
         setLinkType(leadId && !dealId ? 'lead' : 'deal');
+        const quoteLines = q.lineItems ?? [];
+        const hourlyRates = quoteLines
+          .filter((l) => (l.billingType ?? 'hourly') === 'hourly' && (l.unitPrice ?? 0) > 0)
+          .map((l) => l.unitPrice);
+        // Prefer the most common hourly rate on this quote; else first hourly rate; else keep 75.
+        let inferredHourly = 75;
+        if (hourlyRates.length > 0) {
+          const counts = new Map<number, number>();
+          for (const r of hourlyRates) counts.set(r, (counts.get(r) ?? 0) + 1);
+          inferredHourly = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+        }
         setForm({
           dealId,
           leadId,
@@ -243,11 +254,11 @@ export default function CrmQuoteForm() {
           validUntil: q.validUntil ? String(q.validUntil).slice(0, 10) : '',
           discountPercent: q.discountPercent ?? 0,
           taxCode: q.taxCode ?? '',
-          defaultHourlyRate: 75,
-          defaultTaxRate: q.lineItems?.[0]?.taxRate ?? 0,
+          defaultHourlyRate: inferredHourly,
+          defaultTaxRate: quoteLines[0]?.taxRate ?? 0,
           lines:
-            (q.lineItems ?? []).length > 0
-              ? (q.lineItems ?? []).map((l) => ({
+            quoteLines.length > 0
+              ? quoteLines.map((l) => ({
                   description: l.description,
                   category: l.category ?? '',
                   billingType: l.billingType ?? 'hourly',
@@ -266,8 +277,32 @@ export default function CrmQuoteForm() {
     };
   }, [token, id, isNew]);
 
+  const focusNewLineRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusNewLineRef.current) return;
+    focusNewLineRef.current = false;
+    const inputs = document.querySelectorAll<HTMLInputElement>('[data-quote-line-desc]');
+    const last = inputs[inputs.length - 1];
+    last?.focus();
+  }, [form.lines.length]);
+
   if (isNew && !canCreate) return <Navigate to="/crm/quotes" replace />;
   if (!isNew && !canUpdate) return <Navigate to={`/crm/quotes/${id}`} replace />;
+
+  function addLine() {
+    focusNewLineRef.current = true;
+    setForm((f) => ({
+      ...f,
+      lines: [...f.lines, { ...emptyLine(f.defaultTaxRate), unitPrice: f.defaultHourlyRate }],
+    }));
+  }
+
+  function onLineKeyDown(e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    addLine();
+  }
 
   function updateLine(idx: number, patch: Partial<Line>) {
     setForm((f) => {
@@ -641,30 +676,14 @@ export default function CrmQuoteForm() {
 
             {/* Line items */}
             <section className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] overflow-hidden">
-              <div className="px-4 sm:px-5 py-4 border-b border-[color:var(--border-subtle)] flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">
-                    Line items
-                  </h2>
-                  <p className="text-[12px] text-[color:var(--text-muted)] mt-0.5">
-                    Features and deliverables — hours, fixed fees, or milestones.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="h-8 px-3 rounded-md border border-[color:var(--border-subtle)] text-[13px] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)]"
-                  onClick={() =>
-                    setForm((f) => ({
-                      ...f,
-                      lines: [
-                        ...f.lines,
-                        { ...emptyLine(f.defaultTaxRate), unitPrice: f.defaultHourlyRate },
-                      ],
-                    }))
-                  }
-                >
-                  + Add line
-                </button>
+              <div className="px-4 sm:px-5 py-4 border-b border-[color:var(--border-subtle)]">
+                <h2 className="text-sm font-semibold text-[color:var(--text-primary)]">
+                  Line items
+                </h2>
+                <p className="text-[12px] text-[color:var(--text-muted)] mt-0.5">
+                  Features and deliverables — hours, fixed fees, or milestones. Press Enter to add a
+                  new line.
+                </p>
               </div>
 
               <div className="px-4 sm:px-5 py-3 border-b border-[color:var(--border-subtle)] bg-[color:var(--bg-page)]/40">
@@ -709,10 +728,12 @@ export default function CrmQuoteForm() {
                       >
                         <td className="px-3 py-2">
                           <input
+                            data-quote-line-desc
                             className={inputClass}
                             placeholder="Feature / deliverable"
                             value={line.description}
                             onChange={(e) => updateLine(idx, { description: e.target.value })}
+                            onKeyDown={onLineKeyDown}
                             required={idx === 0}
                           />
                         </td>
@@ -721,6 +742,7 @@ export default function CrmQuoteForm() {
                             className={inputClass}
                             value={line.category}
                             onChange={(e) => updateLine(idx, { category: e.target.value })}
+                            onKeyDown={onLineKeyDown}
                           >
                             <option value="">—</option>
                             {CATEGORIES.map((c) => (
@@ -737,6 +759,7 @@ export default function CrmQuoteForm() {
                             onChange={(e) =>
                               updateLine(idx, { billingType: e.target.value as CrmQuoteBillingType })
                             }
+                            onKeyDown={onLineKeyDown}
                           >
                             <option value="hourly">Hourly</option>
                             <option value="fixed">Fixed</option>
@@ -752,6 +775,7 @@ export default function CrmQuoteForm() {
                             className={`${inputClass} disabled:opacity-50`}
                             value={line.quantity}
                             onChange={(e) => updateLine(idx, { quantity: Number(e.target.value) })}
+                            onKeyDown={onLineKeyDown}
                             title={qtyLabel(line.billingType)}
                           />
                         </td>
@@ -763,6 +787,7 @@ export default function CrmQuoteForm() {
                             className={inputClass}
                             value={line.unitPrice}
                             onChange={(e) => updateLine(idx, { unitPrice: Number(e.target.value) })}
+                            onKeyDown={onLineKeyDown}
                             title={rateLabel(line.billingType)}
                           />
                         </td>
@@ -774,6 +799,7 @@ export default function CrmQuoteForm() {
                             className={inputClass}
                             value={line.taxRate}
                             onChange={(e) => updateLine(idx, { taxRate: Number(e.target.value) })}
+                            onKeyDown={onLineKeyDown}
                           />
                         </td>
                         <td className="px-1.5 py-2">
@@ -787,6 +813,7 @@ export default function CrmQuoteForm() {
                             onChange={(e) =>
                               updateLine(idx, { discountPercent: Number(e.target.value) })
                             }
+                            onKeyDown={onLineKeyDown}
                           />
                         </td>
                         <td className="px-2 py-2 text-right font-medium tabular-nums whitespace-nowrap">
@@ -839,10 +866,12 @@ export default function CrmQuoteForm() {
                     <label className="block">
                       <span className={labelClass}>Feature</span>
                       <input
+                        data-quote-line-desc
                         className={inputClass}
                         placeholder="Feature / deliverable"
                         value={line.description}
                         onChange={(e) => updateLine(idx, { description: e.target.value })}
+                        onKeyDown={onLineKeyDown}
                         required={idx === 0}
                       />
                     </label>
@@ -933,6 +962,16 @@ export default function CrmQuoteForm() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="px-4 sm:px-5 py-3 border-t border-[color:var(--border-subtle)] bg-[color:var(--bg-page)]/30">
+                <button
+                  type="button"
+                  className="h-9 w-full sm:w-auto px-4 rounded-md border border-dashed border-[color:var(--border-subtle)] text-[13px] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] hover:border-[color:var(--accent)]"
+                  onClick={addLine}
+                >
+                  + Add line
+                </button>
               </div>
             </section>
 
