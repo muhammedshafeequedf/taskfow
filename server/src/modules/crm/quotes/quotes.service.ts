@@ -1,4 +1,11 @@
-import { CrmQuote, type CrmQuoteBillingType, type ICrmQuoteLine } from '../models/crmQuote.model';
+import mongoose from 'mongoose';
+import {
+  CrmQuote,
+  type CrmQuoteBillingType,
+  type CrmQuoteHistoryAction,
+  type ICrmQuote,
+  type ICrmQuoteLine,
+} from '../models/crmQuote.model';
 import { CrmDeal } from '../models/crmDeal.model';
 import { CrmLead } from '../models/crmLead.model';
 import { CrmContract } from '../models/crmContract.model';
@@ -7,6 +14,102 @@ import { sendCustomerEmail } from '../../../services/email.service';
 import { tfEmailWrap } from '../../../services/email.service';
 import { ApiError } from '../../../utils/ApiError';
 import { requireWorkspaceId, toOrgOid } from '../crmWorkspace';
+
+function pushHistory(
+  quote: ICrmQuote,
+  action: CrmQuoteHistoryAction,
+  message: string,
+  userId?: string,
+  meta?: Record<string, unknown>
+) {
+  if (!quote.history) quote.history = [];
+  quote.history.push({
+    at: new Date(),
+    action,
+    message,
+    userId: userId && mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : undefined,
+    meta,
+  });
+}
+
+function summarizeContentChange(
+  before: {
+    title: string;
+    currency: string;
+    total: number;
+    subtotal: number;
+    discountPercent: number;
+    notes?: string;
+    lineItems: ICrmQuoteLine[];
+    validUntil?: Date;
+  },
+  after: {
+    title: string;
+    currency: string;
+    total: number;
+    subtotal: number;
+    discountPercent: number;
+    notes?: string;
+    lineItems: ICrmQuoteLine[];
+    validUntil?: Date;
+  }
+): { message: string; meta: Record<string, unknown> } {
+  const parts: string[] = [];
+  const meta: Record<string, unknown> = {};
+  if (before.title !== after.title) {
+    parts.push(`title → "${after.title}"`);
+    meta.title = { from: before.title, to: after.title };
+  }
+  if (before.currency !== after.currency) {
+    parts.push(`currency ${before.currency} → ${after.currency}`);
+  }
+  if (before.lineItems.length !== after.lineItems.length) {
+    parts.push(`lines ${before.lineItems.length} → ${after.lineItems.length}`);
+    meta.lineCount = { from: before.lineItems.length, to: after.lineItems.length };
+  }
+  if (round2(before.total) !== round2(after.total)) {
+    parts.push(`total ${before.total} → ${after.total}`);
+    meta.total = { from: before.total, to: after.total };
+  } else if (round2(before.subtotal) !== round2(after.subtotal)) {
+    parts.push(`subtotal ${before.subtotal} → ${after.subtotal}`);
+  }
+  if ((before.discountPercent ?? 0) !== (after.discountPercent ?? 0)) {
+    parts.push(`discount ${before.discountPercent ?? 0}% → ${after.discountPercent ?? 0}%`);
+  }
+  if ((before.notes ?? '') !== (after.notes ?? '')) {
+    parts.push('notes updated');
+  }
+  const beforeValid = before.validUntil ? new Date(before.validUntil).toISOString().slice(0, 10) : '';
+  const afterValid = after.validUntil ? new Date(after.validUntil).toISOString().slice(0, 10) : '';
+  if (beforeValid !== afterValid) {
+    parts.push(`valid until ${afterValid || 'cleared'}`);
+  }
+  // Detect line amount / rate changes even when count stays same
+  if (before.lineItems.length === after.lineItems.length) {
+    let lineEdits = 0;
+    for (let i = 0; i < before.lineItems.length; i++) {
+      const a = before.lineItems[i];
+      const b = after.lineItems[i];
+      if (
+        a.description !== b.description ||
+        a.quantity !== b.quantity ||
+        a.unitPrice !== b.unitPrice ||
+        a.billingType !== b.billingType ||
+        a.amount !== b.amount
+      ) {
+        lineEdits += 1;
+      }
+    }
+    if (lineEdits > 0 && !parts.some((p) => p.startsWith('total') || p.startsWith('lines'))) {
+      parts.push(`${lineEdits} line item(s) changed`);
+      meta.lineEdits = lineEdits;
+    }
+  }
+  return {
+    message: parts.length ? `Updated: ${parts.join('; ')}` : 'Updated quotation',
+    meta,
+  };
+}
 
 type LineInput = {
   description?: string;
@@ -104,6 +207,7 @@ export async function getQuote(id: string, workspaceId: string | null | undefine
     .populate('accountId', 'name type industry website')
     .populate('contactId', 'name email')
     .populate('createdBy', 'name email')
+    .populate('history.userId', 'name email')
     .lean();
   if (!quote) throw new ApiError(404, 'Quote not found');
   return quote;
@@ -180,6 +284,19 @@ export async function createQuote(
     taxCode: input.taxCode ? String(input.taxCode) : undefined,
     notes: input.notes,
     createdBy: userId,
+    history: [
+      {
+        at: new Date(),
+        action: 'created',
+        message: 'Quotation created',
+        userId: mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : undefined,
+        meta: {
+          total: totals.total,
+          currency: input.currency ?? deal?.currency ?? lead?.currency ?? 'USD',
+          lineCount: lineItems.length,
+        },
+      },
+    ],
   });
   return doc.toObject();
 }
@@ -188,7 +305,7 @@ export async function sendQuote(
   id: string,
   workspaceId: string | null | undefined,
   toEmail: string,
-  opts?: { pdfBase64?: string; pdfFilename?: string; message?: string }
+  opts?: { pdfBase64?: string; pdfFilename?: string; message?: string; userId?: string }
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const quote = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) })
@@ -196,6 +313,9 @@ export async function sendQuote(
     .populate('accountId', 'name')
     .lean();
   if (!quote) throw new ApiError(404, 'Quote not found');
+  if (quote.status === 'accepted' || quote.status === 'rejected' || quote.status === 'expired') {
+    throw new ApiError(400, 'Cannot email an accepted, rejected, or expired quotation');
+  }
   const accountName =
     quote.customerOrgId && typeof quote.customerOrgId === 'object' && 'name' in quote.customerOrgId
       ? String((quote.customerOrgId as { name?: string }).name ?? '')
@@ -253,22 +373,32 @@ export async function sendQuote(
       : undefined;
 
   await sendCustomerEmail(toEmail, `Quote: ${quote.title}`, html, attachments);
-  if (quote.status === 'draft') {
-    await CrmQuote.findByIdAndUpdate(id, { $set: { status: 'sent' } });
-  }
+  const doc = await CrmQuote.findById(id);
+  if (!doc) throw new ApiError(404, 'Quote not found');
+  const wasDraft = doc.status === 'draft';
+  if (wasDraft) doc.status = 'sent';
+  pushHistory(
+    doc,
+    wasDraft ? 'sent' : 'emailed',
+    wasDraft ? `Quotation sent by email to ${toEmail}` : `Quotation re-sent by email to ${toEmail}`,
+    opts?.userId,
+    { toEmail, attachedPdf: Boolean(opts?.pdfBase64) }
+  );
+  await doc.save();
   try {
     const { dispatchWebhook } = await import('../ecosystem/ecosystem.service');
     await dispatchWebhook(orgId, 'quote.sent', { quoteId: id, toEmail, title: quote.title });
   } catch {
     /* best-effort */
   }
-  return { ok: true, status: quote.status === 'draft' ? 'sent' : quote.status };
+  return { ok: true, status: doc.status };
 }
 
 export async function updateQuote(
   id: string,
   workspaceId: string | null | undefined,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  userId?: string
 ) {
   const orgId = requireWorkspaceId(workspaceId);
   const existing = await CrmQuote.findOne({ _id: id, taskflowOrganizationId: toOrgOid(orgId) });
@@ -276,19 +406,42 @@ export async function updateQuote(
 
   const nextStatus = input.status as string | undefined;
   if (nextStatus === 'accepted' || nextStatus === 'rejected') {
-    const wasAccepted = existing.status === 'accepted';
+    if (existing.status === 'accepted' || existing.status === 'rejected' || existing.status === 'expired') {
+      throw new ApiError(400, 'This quotation is already closed');
+    }
+    const prev = existing.status;
     existing.status = nextStatus;
+    pushHistory(
+      existing,
+      'status_changed',
+      `Status changed from ${prev} to ${nextStatus}`,
+      userId,
+      { from: prev, to: nextStatus }
+    );
     await existing.save();
     let converted: { contractId?: string; invoiceId?: string } | undefined;
-    if (nextStatus === 'accepted' && !wasAccepted) {
+    if (nextStatus === 'accepted') {
       converted = await convertAcceptedQuote(existing, orgId);
     }
     return { ...existing.toObject(), converted };
   }
 
-  if (existing.status !== 'draft') {
-    throw new ApiError(400, 'Only draft quotes can be edited');
+  // Content edits allowed until accepted (draft or sent)
+  if (existing.status !== 'draft' && existing.status !== 'sent') {
+    throw new ApiError(400, 'Only draft or sent quotations can be edited');
   }
+
+  const before = {
+    title: existing.title,
+    currency: existing.currency,
+    total: existing.total,
+    subtotal: existing.subtotal,
+    discountPercent: existing.discountPercent ?? 0,
+    notes: existing.notes,
+    lineItems: existing.lineItems.map((l) => ({ ...l })),
+    validUntil: existing.validUntil,
+  };
+
   if (input.title !== undefined) existing.title = String(input.title).trim();
   if (input.notes !== undefined) existing.notes = input.notes as string;
   if (input.validUntil !== undefined) {
@@ -302,11 +455,43 @@ export async function updateQuote(
   if (input.lineItems) {
     existing.lineItems = normalizeLines(input.lineItems as LineInput[]);
   }
+  // Allow re-linking while still open
+  if (input.dealId !== undefined) {
+    existing.dealId = input.dealId
+      ? new mongoose.Types.ObjectId(String(input.dealId))
+      : undefined;
+  }
+  if (input.leadId !== undefined) {
+    existing.leadId = input.leadId
+      ? new mongoose.Types.ObjectId(String(input.leadId))
+      : undefined;
+  }
+
   const totals = calcTotals(existing.lineItems, existing.discountPercent ?? 0);
   existing.subtotal = totals.subtotal;
   existing.discountAmount = totals.discountAmount;
   existing.taxTotal = totals.taxTotal;
   existing.total = totals.total;
+
+  const summary = summarizeContentChange(before, {
+    title: existing.title,
+    currency: existing.currency,
+    total: existing.total,
+    subtotal: existing.subtotal,
+    discountPercent: existing.discountPercent ?? 0,
+    notes: existing.notes,
+    lineItems: existing.lineItems,
+    validUntil: existing.validUntil,
+  });
+
+  // Bump version when a sent quote is revised
+  if (existing.status === 'sent') {
+    existing.version = (existing.version ?? 1) + 1;
+    summary.meta.version = existing.version;
+    summary.message = `${summary.message} (v${existing.version})`;
+  }
+
+  pushHistory(existing, 'updated', summary.message, userId, summary.meta);
   await existing.save();
   return existing.toObject();
 }

@@ -227,8 +227,8 @@ export default function CrmQuoteForm() {
           return;
         }
         const q = res.data as CrmQuote;
-        if (q.status !== 'draft') {
-          setError('Only draft quotations can be edited');
+        if (q.status !== 'draft' && q.status !== 'sent') {
+          setError('Only draft or sent quotations can be edited (until accepted)');
           return;
         }
         const dealId = typeof q.dealId === 'string' ? q.dealId : q.dealId?._id ?? '';

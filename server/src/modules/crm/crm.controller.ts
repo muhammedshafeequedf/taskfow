@@ -322,12 +322,13 @@ export async function sendQuote(req: Request & { user?: AuthPayload }, res: Resp
     pdfBase64: body.pdfBase64,
     pdfFilename: body.pdfFilename,
     message: body.message,
+    userId: uid(req),
   });
   res.json({ success: true, data });
 }
 
 export async function updateQuote(req: Request & { user?: AuthPayload }, res: Response) {
-  const data = await quotesService.updateQuote(req.params.id, ws(req), req.body);
+  const data = await quotesService.updateQuote(req.params.id, ws(req), req.body, uid(req));
   res.json({ success: true, data });
 }
 

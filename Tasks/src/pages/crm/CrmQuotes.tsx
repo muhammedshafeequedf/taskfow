@@ -651,7 +651,7 @@ export default function CrmQuotes() {
                         <Link to={`/crm/quotes/${q._id}`} className="text-[color:var(--accent)] hover:underline">
                           View
                         </Link>
-                        {q.status === 'draft' && canUpdate && (
+                        {(q.status === 'draft' || q.status === 'sent') && canUpdate && (
                           <Link
                             to={`/crm/quotes/${q._id}/edit`}
                             className="text-[color:var(--accent)] hover:underline"
@@ -659,7 +659,7 @@ export default function CrmQuotes() {
                             Edit
                           </Link>
                         )}
-                        {q.status === 'draft' && canUpdate && (
+                        {(q.status === 'draft' || q.status === 'sent') && canUpdate && (
                           <button
                             type="button"
                             onClick={() => {

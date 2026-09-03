@@ -2228,6 +2228,14 @@ export interface CrmQuoteLine {
   amount?: number;
 }
 
+export interface CrmQuoteHistoryEntry {
+  at: string;
+  action: 'created' | 'updated' | 'sent' | 'status_changed' | 'emailed';
+  message: string;
+  userId?: string | { _id: string; name?: string; email?: string };
+  meta?: Record<string, unknown>;
+}
+
 export interface CrmQuote {
   _id: string;
   title: string;
@@ -2259,6 +2267,7 @@ export interface CrmQuote {
   notes?: string;
   validUntil?: string;
   projectId?: string;
+  history?: CrmQuoteHistoryEntry[];
   createdBy?: string | { _id: string; name?: string; email?: string };
   createdAt?: string;
   updatedAt?: string;

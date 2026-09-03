@@ -359,7 +359,7 @@ export default function CrmQuoteDetail() {
           >
             Download PDF
           </button>
-          {quote.status === 'draft' && canUpdate && (
+          {(quote.status === 'draft' || quote.status === 'sent') && canUpdate && (
             <Link
               to={`/crm/quotes/${quote._id}/edit`}
               className="px-3 py-2 rounded-lg border border-[color:var(--border-subtle)] text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)]"
@@ -537,6 +537,61 @@ export default function CrmQuoteDetail() {
                 <dd>{quote.createdAt ? formatDateDDMMYYYY(quote.createdAt) : '—'}</dd>
               </div>
             </dl>
+          </section>
+
+          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-5 space-y-3">
+            <h2 className="text-sm font-semibold">History</h2>
+            {(() => {
+              const entries =
+                (quote.history?.length ?? 0) > 0
+                  ? [...(quote.history ?? [])]
+                  : quote.createdAt
+                    ? [
+                        {
+                          at: quote.createdAt,
+                          action: 'created' as const,
+                          message: 'Quotation created',
+                          userId: quote.createdBy,
+                        },
+                      ]
+                    : [];
+              if (entries.length === 0) {
+                return (
+                  <p className="text-[13px] text-[color:var(--text-muted)]">
+                    No history yet. Edits, emails, and status changes will appear here.
+                  </p>
+                );
+              }
+              return (
+                <ul className="space-y-3 max-h-80 overflow-y-auto">
+                  {entries
+                    .slice()
+                    .reverse()
+                    .map((entry, idx) => {
+                      const who =
+                        entry.userId && typeof entry.userId === 'object'
+                          ? entry.userId.name || entry.userId.email
+                          : undefined;
+                      return (
+                        <li
+                          key={`${entry.at}-${idx}`}
+                          className="text-sm border-l-2 border-[color:var(--border-subtle)] pl-3"
+                        >
+                          <p className="text-[color:var(--text-primary)]">{entry.message}</p>
+                          <p className="text-[11px] text-[color:var(--text-muted)] mt-0.5">
+                            {entry.at ? formatDateDDMMYYYY(entry.at) : '—'}
+                            {entry.at
+                              ? ` · ${new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                              : ''}
+                            {who ? ` · ${who}` : ''}
+                            {entry.action ? ` · ${entry.action.replace('_', ' ')}` : ''}
+                          </p>
+                        </li>
+                      );
+                    })}
+                </ul>
+              );
+            })()}
           </section>
 
           <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-elevated)] p-5 space-y-2">

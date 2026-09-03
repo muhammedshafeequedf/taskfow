@@ -19,6 +19,21 @@ export interface ICrmQuoteLine {
   amount: number;
 }
 
+export type CrmQuoteHistoryAction =
+  | 'created'
+  | 'updated'
+  | 'sent'
+  | 'status_changed'
+  | 'emailed';
+
+export interface ICrmQuoteHistoryEntry {
+  at: Date;
+  action: CrmQuoteHistoryAction;
+  message: string;
+  userId?: mongoose.Types.ObjectId;
+  meta?: Record<string, unknown>;
+}
+
 export interface ICrmQuote extends Document {
   taskflowOrganizationId: mongoose.Types.ObjectId;
   /** Optional — quotes may be linked to a deal and/or a lead */
@@ -47,6 +62,8 @@ export interface ICrmQuote extends Document {
   notes?: string;
   createdBy: mongoose.Types.ObjectId;
   projectId?: mongoose.Types.ObjectId;
+  /** Audit trail of status / send / content changes */
+  history: ICrmQuoteHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -88,6 +105,22 @@ const crmQuoteSchema = new Schema<ICrmQuote>(
     notes: { type: String },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     projectId: { type: Schema.Types.ObjectId, ref: 'Project' },
+    history: {
+      type: [
+        {
+          at: { type: Date, default: Date.now },
+          action: {
+            type: String,
+            enum: ['created', 'updated', 'sent', 'status_changed', 'emailed'],
+            required: true,
+          },
+          message: { type: String, required: true },
+          userId: { type: Schema.Types.ObjectId, ref: 'User' },
+          meta: { type: Schema.Types.Mixed },
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );
