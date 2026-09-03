@@ -98,6 +98,8 @@ import CustomerRequestApprovals from './pages/admin/CustomerRequestApprovals';
 import StandaloneAppSettings from './pages/StandaloneAppSettings';
 import KnowledgeBase from './pages/service/KnowledgeBase';
 import CrmDashboard from './pages/crm/CrmDashboard';
+import CrmAccounts from './pages/crm/CrmAccounts';
+import CrmAccountDetail from './pages/crm/CrmAccountDetail';
 import CrmContacts from './pages/crm/CrmContacts';
 import CrmDeals from './pages/crm/CrmDeals';
 import CrmLeads from './pages/crm/CrmLeads';
@@ -293,8 +295,8 @@ function AppRoutes() {
         {/* CRM module */}
         <Route element={<CrmModuleLayout />}>
         <Route path="/crm" element={<CrmDashboard />} />
-        <Route path="/crm/accounts" element={<Navigate to="/admin/customer-orgs" replace />} />
-        <Route path="/crm/accounts/:id" element={<Navigate to="/admin/customer-orgs" replace />} />
+        <Route path="/crm/accounts" element={<CrmAccounts />} />
+        <Route path="/crm/accounts/:id" element={<CrmAccountDetail />} />
         <Route path="/crm/contacts" element={<CrmContacts />} />
         <Route path="/crm/deals" element={<CrmDeals />} />
         <Route path="/crm/leads" element={<CrmLeads />} />

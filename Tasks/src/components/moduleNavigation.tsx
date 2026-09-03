@@ -126,6 +126,9 @@ export function buildCrmNav(user: NavUser): NavItem[] {
   if (allow(user, 'taskflow.crm.lead.list', 'taskflow.crm.lead.create')) {
     nav.push({ to: '/crm/leads', label: 'Leads', icon: <IssuesIcon /> });
   }
+  if (allow(user, 'taskflow.crm.account.list', 'taskflow.crm.account.create')) {
+    nav.push({ to: '/crm/accounts', label: 'Accounts', icon: <ProjectsIcon /> });
+  }
   if (allow(user, 'taskflow.crm.contact.list')) {
     nav.push({ to: '/crm/contacts', label: 'Contacts', icon: <UsersIcon /> });
   }
