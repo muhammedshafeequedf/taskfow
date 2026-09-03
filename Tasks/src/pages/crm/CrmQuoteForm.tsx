@@ -605,26 +605,36 @@ export default function CrmQuoteForm() {
                 </label>
                 <label className="block">
                   <span className={labelClass}>Default hourly rate</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.defaultHourlyRate}
-                    onChange={(e) => {
-                      const rate = Number(e.target.value) || 0;
-                      setForm((f) => ({
-                        ...f,
-                        defaultHourlyRate: rate,
-                        lines: f.lines.map((l) =>
-                          l.billingType === 'hourly' &&
-                          (!l.unitPrice || l.unitPrice === f.defaultHourlyRate)
-                            ? { ...l, unitPrice: rate }
-                            : l
-                        ),
-                      }));
-                    }}
-                    className={inputClass}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.defaultHourlyRate}
+                      onChange={(e) => {
+                        const rate = Number(e.target.value) || 0;
+                        setForm((f) => ({ ...f, defaultHourlyRate: rate }));
+                      }}
+                      className={inputClass}
+                    />
+                    <button
+                      type="button"
+                      title="Set this rate on every hourly line"
+                      className="shrink-0 h-[38px] px-3 rounded-md border border-[color:var(--border-subtle)] text-[12px] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-page)] hover:border-[color:var(--accent)] whitespace-nowrap"
+                      onClick={() => {
+                        const rate = Number(form.defaultHourlyRate) || 0;
+                        setForm((f) => ({
+                          ...f,
+                          defaultHourlyRate: rate,
+                          lines: f.lines.map((l) =>
+                            l.billingType === 'hourly' ? { ...l, unitPrice: rate } : l
+                          ),
+                        }));
+                      }}
+                    >
+                      Apply to all
+                    </button>
+                  </div>
                 </label>
                 <label className="block">
                   <span className={labelClass}>Tax</span>

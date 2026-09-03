@@ -2505,9 +2505,13 @@ export const crmApi = {
   createPipeline: (data: Record<string, unknown>, token: string) => api.post<CrmPipeline>('/crm/pipelines', data, token),
   updatePipeline: (id: string, data: Record<string, unknown>, token: string) =>
     api.patch<CrmPipeline>(`/crm/pipelines/${id}`, data, token),
-  listQuotes: (token: string, opts?: { dealId?: string; accountId?: string; customerOrgId?: string }) => {
+  listQuotes: (
+    token: string,
+    opts?: { dealId?: string; leadId?: string; accountId?: string; customerOrgId?: string }
+  ) => {
     const p = new URLSearchParams();
     if (opts?.dealId) p.set('dealId', opts.dealId);
+    if (opts?.leadId) p.set('leadId', opts.leadId);
     if (opts?.customerOrgId) p.set('customerOrgId', opts.customerOrgId);
     if (opts?.accountId) p.set('accountId', opts.accountId);
     const q = p.toString();

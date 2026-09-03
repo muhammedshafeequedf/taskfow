@@ -9,6 +9,7 @@ import {
   type CrmActivity,
   type CrmLead,
   type CrmPipeline,
+  type CrmQuote,
 } from '../../lib/api';
 import {
   LEAD_COMPANY_SIZES,
@@ -49,9 +50,11 @@ export default function CrmLeadDetail() {
   const canDelete = canAny(user, 'taskflow.crm.lead.delete');
   const canActivity = canAny(user, 'taskflow.crm.activity.create');
   const canQuote = canAny(user, 'taskflow.crm.quote.create');
+  const canListQuotes = canAny(user, 'taskflow.crm.quote.list', 'taskflow.crm.quote.create');
 
   const [lead, setLead] = useState<CrmLead | null>(null);
   const [activities, setActivities] = useState<CrmActivity[]>([]);
+  const [quotes, setQuotes] = useState<CrmQuote[]>([]);
   const [pipelines, setPipelines] = useState<CrmPipeline[]>([]);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
@@ -96,6 +99,12 @@ export default function CrmLeadDetail() {
     crmApi.listActivities(token, { relatedType: 'lead', relatedId: id }).then((res) => {
       if (res.success && res.data) setActivities(res.data);
     });
+    if (canListQuotes) {
+      crmApi.listQuotes(token, { leadId: id }).then((res) => {
+        if (res.success && res.data) setQuotes(res.data as CrmQuote[]);
+        else setQuotes([]);
+      });
+    }
   };
 
   useEffect(() => {
@@ -341,7 +350,8 @@ export default function CrmLeadDetail() {
       {msg && <p className="text-sm text-[color:var(--accent)]">{msg}</p>}
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <section className="xl:col-span-2 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
+        <div className="xl:col-span-2 space-y-4 min-w-0">
+        <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
           <h2 className="text-sm font-semibold mb-4">Details</h2>
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Dl label="Contact" value={[lead.contactName, lead.jobTitle].filter(Boolean).join(' · ')} />
@@ -429,6 +439,85 @@ export default function CrmLeadDetail() {
             <p className="mt-3 text-sm text-red-400">Unqualified: {lead.disqualifyReason}</p>
           )}
         </section>
+
+        {canListQuotes && (
+          <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-surface)] p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div>
+                <h2 className="text-sm font-semibold">Quotations</h2>
+                <p className="text-[12px] text-[color:var(--text-muted)] mt-0.5">
+                  Quotes created against this lead
+                </p>
+              </div>
+              {canQuote && (
+                <Link
+                  to={`/crm/quotes/new?leadId=${lead._id}`}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-[color:var(--border-subtle)] text-[color:var(--accent)] hover:bg-[color:var(--bg-page)]"
+                >
+                  + New quotation
+                </Link>
+              )}
+            </div>
+            {quotes.length === 0 ? (
+              <p className="text-sm text-[color:var(--text-muted)]">
+                No quotations linked yet.{' '}
+                {canQuote && (
+                  <Link to={`/crm/quotes/new?leadId=${lead._id}`} className="text-[color:var(--accent)] hover:underline">
+                    Create one
+                  </Link>
+                )}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wider text-[color:var(--text-muted)] border-b border-[color:var(--border-subtle)]">
+                      <th className="pb-2 font-medium">Title</th>
+                      <th className="pb-2 font-medium">Status</th>
+                      <th className="pb-2 font-medium text-right">Total</th>
+                      <th className="pb-2 font-medium">Valid until</th>
+                      <th className="pb-2 font-medium text-right"> </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quotes.map((q) => (
+                      <tr key={q._id} className="border-t border-[color:var(--border-subtle)]">
+                        <td className="py-2.5 pr-3">
+                          <Link
+                            to={`/crm/quotes/${q._id}`}
+                            className="font-medium text-[color:var(--accent)] hover:underline"
+                          >
+                            {q.title || 'Untitled'}
+                          </Link>
+                          <span className="block text-[11px] text-[color:var(--text-muted)]">
+                            {q.currency}
+                            {q.version ? ` · v${q.version}` : ''}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-3 capitalize text-[color:var(--text-muted)]">{q.status}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums font-medium">
+                          {money(q.total ?? q.subtotal ?? 0, q.currency || 'USD')}
+                        </td>
+                        <td className="py-2.5 pr-3 text-[color:var(--text-muted)]">
+                          {q.validUntil ? formatDateDDMMYYYY(q.validUntil) : '—'}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <Link
+                            to={`/crm/quotes/${q._id}`}
+                            className="text-xs text-[color:var(--accent)] hover:underline"
+                          >
+                            Open
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+        </div>
 
         <aside className="space-y-4">
           {canUpdate && open && (

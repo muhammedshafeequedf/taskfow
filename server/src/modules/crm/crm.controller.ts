@@ -290,9 +290,10 @@ export async function updatePipeline(req: Request & { user?: AuthPayload }, res:
 
 export async function listQuotes(req: Request & { user?: AuthPayload }, res: Response) {
   uid(req);
-  const q = req.query as { dealId?: string; accountId?: string; customerOrgId?: string };
+  const q = req.query as { dealId?: string; leadId?: string; accountId?: string; customerOrgId?: string };
   const data = await quotesService.listQuotes(ws(req), {
     dealId: q.dealId,
+    leadId: q.leadId,
     accountId: q.accountId,
     customerOrgId: q.customerOrgId,
   });
